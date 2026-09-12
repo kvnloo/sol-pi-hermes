@@ -1,6 +1,8 @@
 """SoL-Pi feature flags for the Hermes host.
 
 Defaults match NVlabs/SoL-Pi: every mechanism is off until config enables it.
+Operator keys are the shared v1 schema (POLICY.md, schema/sol-pi.policy.v1.schema.json).
+ObservationPack FULL_SENDS and thresholdBytes are not file keys.
 """
 
 from __future__ import annotations
