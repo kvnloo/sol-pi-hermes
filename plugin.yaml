@@ -1,0 +1,17 @@
+name: sol-pi
+version: 0.1.0
+description: SoL-Pi mechanisms for Hermes — ObservationPack projection, obs_recall, optional fusion/EPR/OCC
+manifest_version: 2
+api_version: 1
+license: MIT
+homepage: https://github.com/kvnloo/sol-pi-hermes
+tags: [sol-pi, context, observation-pack, hermes]
+provides_tools:
+  - obs_recall
+  - sol_pi_write
+  - sol_pi_patch
+provides_hooks:
+  - post_tool_call
+  - on_session_start
+  - transform_tool_result
+  - agent_settled

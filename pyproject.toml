@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_backend"
+
+[project]
+name = "sol-pi-hermes"
+version = "0.1.0"
+description = "Standalone Hermes Python plugin port of NVlabs/SoL-Pi"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Kevin Rajan" }]
+keywords = ["hermes", "sol-pi", "observation-pack"]
+
+[project.urls]
+Homepage = "https://github.com/kvnloo/sol-pi-hermes"
+
+[tool.setuptools]
+packages = ["sol_pi_hermes"]
