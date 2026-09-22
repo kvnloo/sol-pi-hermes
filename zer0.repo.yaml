@@ -1,0 +1,64 @@
+version: 1
+repo: kvnloo/sol-pi-hermes
+id: sol-pi-hermes
+kind: extension
+summary: Hermes-native port of reusable SoL-Pi efficiency mechanisms without patching or replacing Hermes core.
+
+architecture:
+  subsystems:
+    - id: plugin-entry
+      name: Hermes plugin integration
+      kind: runtime_extension
+      paths:
+        - __init__.py
+        - plugin.yaml
+
+    - id: efficiency-mechanisms
+      name: SoL-Pi mechanism ports
+      kind: efficiency
+      summary: Hermes-native Action Fusion, ObservationPack, Evidence-Preserving Reducer, and Online Context Compact behavior.
+      paths:
+        - sol_pi_hermes/
+      depends_on: [plugin-entry]
+
+    - id: verification
+      name: Plugin verification
+      kind: evaluation
+      paths:
+        - tests/
+      depends_on: [efficiency-mechanisms]
+
+  implements_mechanisms:
+    - sol-pi-action-fusion
+    - sol-pi-observation-pack
+    - sol-pi-evidence-reducer
+    - sol-pi-online-context-compact
+
+  provides_interfaces: []
+  consumes_interfaces: []
+
+  produces_representations:
+    - observation-pack
+    - evidence-receipt
+
+  consumes_representations:
+    - raw-context
+
+  boundaries:
+    owns:
+      - Hermes-native implementations of SoL-Pi mechanisms
+      - local observation archive and exact recall for ObservationPack
+      - quote-verified diagnostic reduction
+    not_here:
+      - Hermes core runtime authority
+      - replacement context engine registration
+      - provider authentication or model selection
+
+  evidence:
+    docs:
+      - README.md
+      - PUBLISH.md
+    tests:
+      - tests/
+    schemas:
+      - plugin.yaml
