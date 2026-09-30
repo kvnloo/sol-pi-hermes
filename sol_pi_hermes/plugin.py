@@ -11,9 +11,9 @@ from .action_fusion import PATCH_SCHEMA, WRITE_SCHEMA, execute_mutation_then_run
 from .config import SolPiConfig, load_sol_pi_config
 from .epr import transform_if_reduced
 from .observation_pack import (
+    project_messages,
     recall,
     runtime_root_for_session,
-    wrap_select_context,
 )
 from .occ import OnlineCompactGate
 
@@ -37,7 +37,7 @@ OBS_RECALL_SCHEMA = {
 
 
 def _session_id(**kwargs: Any) -> str:
-    return str(kwargs.get("session_id") or kwargs.get("task_id") or "default")
+    return str(kwargs.get("session_id") or kwargs.get("task_id") or "")
 
 
 def _cwd(**kwargs: Any) -> Path:
@@ -45,44 +45,36 @@ def _cwd(**kwargs: Any) -> Path:
     return Path(cwd) if cwd else Path.cwd()
 
 
-def _engine_from_ctx(ctx: Any) -> Any | None:
-    manager = getattr(ctx, "_manager", None)
-    if manager is not None:
-        engine = getattr(manager, "_context_engine", None)
-        if engine is not None:
-            return engine
-        cli = getattr(manager, "_cli_ref", None)
-        agent = getattr(cli, "agent", None) if cli is not None else None
-        if agent is not None:
-            return getattr(agent, "context_compressor", None)
-    return None
-
-
 def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     """Wire tools and hooks. Never registers a ContextEngine."""
     cfg = config or load_sol_pi_config()
     sent_counts: dict[str, int] = {}
-    wrapped_engines: set[int] = set()
     gate = OnlineCompactGate(enabled=cfg.online_context_compact)
-    roots: dict[str, Path] = {}
 
     def root_for(**kwargs: Any) -> Path:
-        sid = _session_id(**kwargs)
-        if sid not in roots:
-            roots[sid] = runtime_root_for_session(sid)
-        return roots[sid]
+        # Both request projection and tool dispatch run in the owning profile.
+        # Resolve on every call: one process can serve several homes/sessions.
+        return runtime_root_for_session(_session_id(**kwargs))
 
-    def maybe_wrap(**kwargs: Any) -> None:
-        if not cfg.observation_pack:
+    def on_llm_request(request=None, **kwargs: Any):
+        if not isinstance(request, dict) or not _session_id(**kwargs):
             return
-        engine = _engine_from_ctx(ctx)
-        if engine is None:
+        messages = request.get("messages")
+        if "input" in request or not isinstance(messages, list) or not messages:
             return
-        marker = id(engine)
-        if marker in wrapped_engines:
+        if not all(isinstance(message, dict) for message in messages):
             return
-        wrap_select_context(engine, root_for(**kwargs), sent_counts)
-        wrapped_engines.add(marker)
+        # This seam runs after provider decoration. Do not flatten text blocks
+        # (which can carry cache metadata), images, or native provider envelopes.
+        if any(message.get("role") not in {"system", "developer", "user", "assistant", "tool"}
+               or (message.get("role") == "tool" and not isinstance(message.get("content"), str))
+               for message in messages):
+            return
+        projected = project_messages(messages, root_for(**kwargs), sent_counts)
+        if projected == messages:
+            return
+        return {"request": {**request, "messages": projected}, "source": "sol-pi",
+                "reason": "ObservationPack request-only projection"}
 
     def obs_recall(args: dict, **kwargs: Any) -> str:
         return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
@@ -125,12 +117,6 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             run_command=_run_terminal,
         )
 
-    def on_session_start(**kwargs: Any) -> None:
-        maybe_wrap(**kwargs)
-
-    def on_post_tool_call(**kwargs: Any) -> None:
-        maybe_wrap(**kwargs)
-
     def on_transform_tool_result(tool_name=None, args=None, result=None, **kwargs: Any):
         if not cfg.evidence_preserving_reducer:
             return None
@@ -148,8 +134,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     ctx.register_tool(name="obs_recall", toolset="sol-pi", schema=OBS_RECALL_SCHEMA, handler=obs_recall)
     ctx.register_tool(name="sol_pi_write", toolset="sol-pi", schema=WRITE_SCHEMA, handler=sol_pi_write)
     ctx.register_tool(name="sol_pi_patch", toolset="sol-pi", schema=PATCH_SCHEMA, handler=sol_pi_patch)
-    ctx.register_hook("on_session_start", on_session_start)
-    ctx.register_hook("post_tool_call", on_post_tool_call)
+    if cfg.observation_pack:
+        ctx.register_middleware("llm_request", on_llm_request)
     ctx.register_hook("transform_tool_result", on_transform_tool_result)
     ctx.register_hook("agent_settled", on_agent_settled)
-    maybe_wrap()

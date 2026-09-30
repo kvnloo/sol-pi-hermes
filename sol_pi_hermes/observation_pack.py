@@ -1,8 +1,8 @@
 """ObservationPack: archive large tool results; project placeholders at request time.
 
 Port of NVlabs/SoL-Pi observation-pack. The stored conversation is never truncated.
-Projection happens on a copy of the provider request messages (Hermes
-``ContextEngine.select_context``), not via ``transform_tool_result``.
+Projection happens on a copy of provider request messages (Hermes
+``llm_request`` middleware), not via ``transform_tool_result``.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from .config import _hermes_home
 
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
@@ -61,7 +63,7 @@ def ledger_path(runtime_root: Path) -> Path:
 
 
 def runtime_root_for_session(session_id: str, hermes_home: Path | None = None) -> Path:
-    home = hermes_home or (Path.home() / ".hermes")
+    home = hermes_home or _hermes_home()
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_id) or "default"
     return home / "sol-pi" / safe
 

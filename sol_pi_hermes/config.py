@@ -6,6 +6,7 @@ Defaults match NVlabs/SoL-Pi: every mechanism is off until config enables it.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -39,7 +40,12 @@ class SolPiConfig:
 
 
 def _hermes_home() -> Path:
-    return Path.home() / ".hermes"
+    try:
+        from hermes_constants import get_hermes_home
+    except ImportError:
+        # Standalone evaluators do not require the Hermes host package.
+        return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+    return get_hermes_home()
 
 
 def find_config_path(cwd: str | Path | None = None, hermes_home: Path | None = None) -> Path | None:

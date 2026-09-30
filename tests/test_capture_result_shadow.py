@@ -22,11 +22,13 @@ class CaptureResultShadowTests(unittest.TestCase):
         self.assertTrue(result["full_send_2_unchanged"])
         self.assertLess(result["placeholder_bytes"], result["original_bytes"])
         self.assertEqual(result["recall_recovery_rate"], 1.0)
+        self.assertTrue(result["recall_exact"])
 
     def test_full_shadow_matrix_is_recoverable_without_claiming_placeholder_equivalence(self):
         report = run()
         self.assertTrue(report["all_first_two_unchanged"])
         self.assertTrue(report["all_markers_recoverable"])
+        self.assertTrue(report["all_observations_exact"])
         self.assertTrue(report["placeholder_retention_is_not_equivalence"])
         self.assertTrue(
             any(row["placeholder_retention_rate"] < 1.0 for row in report["rows"]),

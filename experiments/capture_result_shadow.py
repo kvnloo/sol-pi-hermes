@@ -184,7 +184,9 @@ def _recall_all(root: Path, obs_id: str) -> tuple[str, int]:
         row = json.loads(recall(root, obs_id, offset))
         if row.get("error"):
             raise ValueError(str(row["error"]))
-        chunks.append(str(row["content"]))
+        # Recall has two display-header lines. Byte offsets address only the
+        # archived body; inserting headers/newlines between pages corrupts it.
+        chunks.append(str(row["content"]).split("\n", 2)[2])
         calls += 1
         if row.get("eof"):
             break
@@ -194,7 +196,7 @@ def _recall_all(root: Path, obs_id: str) -> tuple[str, int]:
         offset = next_offset
         if calls > 128:
             raise RuntimeError("recall exceeded safety bound")
-    return "\n".join(chunks), calls
+    return "".join(chunks), calls
 
 
 def evaluate_fixture(fixture: CaptureFixture, root: Path) -> dict[str, Any]:
@@ -248,6 +250,7 @@ def evaluate_fixture(fixture: CaptureFixture, root: Path) -> dict[str, Any]:
         "placeholder_retention_rate": len(placeholder_retained) / len(required),
         "recall_recovered": recall_recovered,
         "recall_recovery_rate": len(recall_recovered) / len(required),
+        "recall_exact": recalled.encode("utf-8") == text.encode("utf-8"),
         "recall_calls": recall_calls,
         "observation_id": obs_id,
         "full_send_1_unchanged": first_text == text,
@@ -272,6 +275,7 @@ def run(fixtures: Iterable[CaptureFixture] | None = None, *, root: Path | None =
             r["full_send_1_unchanged"] and r["full_send_2_unchanged"] for r in rows
         ),
         "all_markers_recoverable": all(r["recall_recovery_rate"] == 1.0 for r in rows),
+        "all_observations_exact": all(r["recall_exact"] for r in rows),
         "placeholder_retention_is_not_equivalence": True,
     }
 
