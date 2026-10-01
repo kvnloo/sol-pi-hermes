@@ -33,6 +33,10 @@ This plugin **never** calls `ctx.register_context_engine`. ObservationPack compo
 
 OCC without `agent_settled` is a no-op. Stock Hermes does not emit that Pi event; enabling `onlineContextCompact` records the gate but will not compact until the host fires the hook.
 
+Action Fusion treats returned Hermes JSON errors, `success: false`, and integer nonzero exit codes as failures. A failed write or patch skips the chained command even when the old target file still exists. A failed command retains its output and reports `[then_run:failed]`; successful and exception-based paths keep their existing behavior. Tests use temporary files and harmless callbacks, with no provider or live shell calls.
+
+Known limitation: Hermes commands that yield to the background without a completed exit code still receive the existing `[then_run:succeeded]` label. This failure-reporting fix does not wait for background completion or claim that outcome is verified.
+
 ## Provenance
 
 Algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT). Linear: [PER-1507](https://linear.app/0ism/issue/PER-1507). Research: [kvnloo/frontier-kb#10](https://github.com/kvnloo/frontier-kb/pull/10).
