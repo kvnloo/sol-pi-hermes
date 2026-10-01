@@ -13,6 +13,31 @@ jobs:
   unittest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Unit tests
         run: python3 -m unittest discover -s tests
+
+  hermes-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: NousResearch/hermes-agent
+          ref: bda33b601d194fb8a43e5660c57542aad14aa372
+          path: hermes-host
+      - name: Configure isolated test paths
+        run: |
+          echo "HERMES_HOME=$RUNNER_TEMP/sol-pi-hermes-home" >> "$GITHUB_ENV"
+          echo "HERMES_RUNTIME_DIR=$RUNNER_TEMP/sol-pi-hermes-runtime" >> "$GITHUB_ENV"
+          echo "HERMES_SOURCE=$GITHUB_WORKSPACE/hermes-host" >> "$GITHUB_ENV"
+      - name: Build disposable host-test interpreter through Hermes PM
+        working-directory: hermes-host
+        run: >-
+          python3 -m pm.build_env
+          --requirement 'ruamel.yaml==0.18.16'
+          --requirement 'python-dotenv==1.1.1'
+          --requirement 'pyyaml==6.0.2'
+          --out "$RUNNER_TEMP/sol-pi-host-venv"
+      - name: Real discovery, request projection, and recall integration
+        run: '"$RUNNER_TEMP/sol-pi-host-venv/bin/python" -m unittest discover -s tests -v'

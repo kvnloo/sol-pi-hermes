@@ -1,8 +1,8 @@
 """ObservationPack: archive large tool results; project placeholders at request time.
 
 Port of NVlabs/SoL-Pi observation-pack. The stored conversation is never truncated.
-Projection happens on a copy of the provider request messages (Hermes
-``ContextEngine.select_context``), not via ``transform_tool_result``.
+Projection happens on a copy of provider request messages (Hermes
+``llm_request`` middleware), not via ``transform_tool_result``.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from .config import _hermes_home
 
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
@@ -61,7 +63,7 @@ def ledger_path(runtime_root: Path) -> Path:
 
 
 def runtime_root_for_session(session_id: str, hermes_home: Path | None = None) -> Path:
-    home = hermes_home or (Path.home() / ".hermes")
+    home = hermes_home or _hermes_home()
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_id) or "default"
     return home / "sol-pi" / safe
 
@@ -129,12 +131,31 @@ def contains_reducer_receipt(text: str) -> bool:
     return any(line == EVIDENCE_REDUCER_RECEIPT_PREFIX for line in text.split("\n"))
 
 
+def _preserve_serialized_result(text: str) -> bool:
+    """Keep failed or ambiguous JSON-looking tool results inline."""
+    if not text.lstrip().startswith("{"):
+        return False
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        # Hermes may append subdirectory hints to JSON. Truncation can also
+        # remove its closing delimiter: do not infer success from a parse error.
+        return True
+    if not isinstance(payload, dict):
+        return False
+    exit_code = payload.get("exit_code")
+    terminal_failure = "output" in payload and type(exit_code) is int and exit_code != 0
+    return bool(payload.get("error")) or payload.get("success") is False or terminal_failure
+
+
 def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observation | None:
     text = _message_text(message)
     if contains_reducer_receipt(text):
         return None
     size = utf8_len(text)
     if size <= THRESHOLD_BYTES:
+        return None
+    if _preserve_serialized_result(text):
         return None
     if not str(runtime_root):
         raise ValueError("Persistent SoL-Pi runtime directory is unavailable")
@@ -163,7 +184,12 @@ def ensure_stored(observation: Observation) -> None:
     try:
         fd = os.open(observation.file_path, flags, 0o600)
         try:
-            os.write(fd, observation.text.encode("utf-8"))
+            remaining = memoryview(observation.text.encode("utf-8"))
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError(f"Observation write made no progress for {observation.id}")
+                remaining = remaining[written:]
         finally:
             os.close(fd)
     except FileExistsError:
@@ -349,6 +375,22 @@ def read_recall_chunk(
     }
 
 
+def _recall_payload(obs_id: str, offset: int, chunk: Mapping[str, Any]) -> dict[str, Any]:
+    header = (
+        f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
+        f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
+    )
+    return {
+        "id": obs_id,
+        "offset": offset,
+        "next_offset": chunk["nextOffset"],
+        "eof": chunk["eof"],
+        "bytes": chunk["bytes"],
+        "lines": chunk["lines"],
+        "content": f"{header}\n{chunk['text']}",
+    }
+
+
 def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
     if not is_observation_id(obs_id):
         return json.dumps({"error": f"Unknown observation id: {obs_id}"})
@@ -358,18 +400,30 @@ def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
         "max_lines": RECALL_MAX_LINES - RECALL_HEADER_LINES,
     }
     try:
-        chunk = read_recall_chunk(path, offset, **limits)
+        while True:
+            chunk = read_recall_chunk(path, offset, **limits)
+            payload = _recall_payload(obs_id, offset, chunk)
+            wire = json.dumps(payload, ensure_ascii=False)
+            wire_bytes = utf8_len(wire)
+            if wire_bytes <= RECALL_MAX_BYTES:
+                break
+            # JSON escapes can expand bytes after the raw chunk was bounded.
+            # Reduce the byte budget, then let the reader preserve UTF-8 edges
+            # and recompute offsets/lines. The budget strictly decreases.
+            limits["max_bytes"] = min(
+                limits["max_bytes"] - 1,
+                limits["max_bytes"] * RECALL_MAX_BYTES // wire_bytes,
+            )
+            if limits["max_bytes"] <= 0:
+                return json.dumps({"error": "Recall output exceeded its hard limit"})
     except FileNotFoundError:
         return json.dumps({"error": f"Unknown observation id: {obs_id}"})
     except Exception as exc:
         return json.dumps({"error": str(exc)})
-    header = (
-        f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
-        f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
-    )
-    content = f"{header}\n{chunk['text']}"
-    if utf8_len(content) > RECALL_MAX_BYTES or count_lines(content) > RECALL_MAX_LINES:
+    if count_lines(payload["content"]) > RECALL_MAX_LINES:
         return json.dumps({"error": "Recall output exceeded its hard limit"})
+    if not chunk["bytes"] and not chunk["eof"]:
+        return json.dumps({"error": "Recall output limit prevented progress"})
     append_ledger(
         runtime_root,
         {
@@ -382,17 +436,7 @@ def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
             "eof": chunk["eof"],
         },
     )
-    return json.dumps(
-        {
-            "id": obs_id,
-            "offset": offset,
-            "next_offset": chunk["nextOffset"],
-            "eof": chunk["eof"],
-            "bytes": chunk["bytes"],
-            "lines": chunk["lines"],
-            "content": content,
-        }
-    )
+    return wire
 
 
 def wrap_select_context(engine: Any, runtime_root: Path, sent_counts: dict[str, int]) -> None:

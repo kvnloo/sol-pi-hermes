@@ -12,6 +12,8 @@ from sol_pi_hermes.config import load_sol_pi_config
 from sol_pi_hermes.epr import LIKELY_SECRET, quote_verify, should_reduce, transform_if_reduced
 from sol_pi_hermes.observation_pack import (
     FULL_SENDS,
+    RECALL_MAX_BYTES,
+    RECALL_MAX_LINES,
     THRESHOLD_BYTES,
     create_observation,
     placeholder_for,
@@ -46,6 +48,68 @@ class ConfigTests(unittest.TestCase):
 
 
 class ObservationPackTests(unittest.TestCase):
+    def test_recall_wire_budget_and_offsets_preserve_all_original_bytes(self) -> None:
+        bodies = ("尾🙂" * 5000, '"\\' * 12000, "\x01" * 20000,
+                  "short line\n" * 3000, "x" * 40000)
+        with tempfile.TemporaryDirectory() as tmp:
+            for number, body in enumerate(bodies):
+                with self.subTest(body=number):
+                    root = Path(tmp) / str(number)
+                    messages = [_big_tool(body)]
+                    counts = {}
+                    for _ in range(FULL_SENDS + 1):
+                        packed = project_messages(messages, root, counts)
+                    obs_id = packed[0]["content"].split("id: ", 1)[1].split("\n", 1)[0]
+                    chunks, offset = [], 0
+                    while True:
+                        wire = recall(root, obs_id, offset)
+                        self.assertLessEqual(len(wire.encode("utf-8")), RECALL_MAX_BYTES)
+                        row = json.loads(wire)
+                        self.assertNotIn("error", row)
+                        header, limits, content = row["content"].split("\n", 2)
+                        self.assertLessEqual(len(row["content"].splitlines()), RECALL_MAX_LINES)
+                        self.assertEqual(row["bytes"], len(content.encode("utf-8")))
+                        self.assertEqual(row["next_offset"], offset + row["bytes"])
+                        chunks.append(content)
+                        if row["eof"]:
+                            break
+                        self.assertGreater(row["next_offset"], offset)
+                        offset = row["next_offset"]
+                    self.assertEqual("".join(chunks).encode("utf-8"), body.encode("utf-8"))
+
+    def test_failed_or_ambiguous_json_stays_inline_while_successful_logs_are_packed(self) -> None:
+        output = "error: synthetic diagnostic, not itself a failure signal\n" * 300
+        failures = (
+            {"error": "command failed", "output": output},
+            {"success": False, "message": "operation failed", "output": output},
+            {"exit_code": 1, "error": None, "output": output},
+        )
+        successes = (
+            {"exit_code": 0, "error": None, "output": output},
+            {"success": True, "output": output},
+            {"results": [{"error": "quoted data"}], "output": output},
+        )
+        failure_bodies = tuple(json.dumps(payload) for payload in failures)
+        hint = "\n\n[Subdirectory context discovered: synthetic test instructions]"
+        retained = (*failure_bodies, failure_bodies[0] + hint,
+                    failure_bodies[0][:-1], json.dumps(successes[0]) + hint)
+        packed = tuple(json.dumps(payload) for payload in successes)
+        with tempfile.TemporaryDirectory() as tmp:
+            for number, body in enumerate((*retained, *packed)):
+                with self.subTest(payload=number):
+                    root = Path(tmp) / str(number)
+                    message = _big_tool(body)
+                    counts = {}
+                    for send in range(4):
+                        result = project_messages([message], root, counts)[0]["content"]
+                        if number < len(retained) or send < FULL_SENDS:
+                            self.assertTrue(result == body, "failure or fresh result lost inline evidence")
+                        else:
+                            self.assertLess(len(result), len(body))
+                    self.assertEqual(message["content"], body)
+                    if number < len(retained):
+                        self.assertFalse(root.exists(), "failed results must not be archived or counted")
+
     def test_small_results_are_not_packed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

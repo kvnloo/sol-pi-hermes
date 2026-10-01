@@ -11,7 +11,5 @@ provides_tools:
   - sol_pi_write
   - sol_pi_patch
 provides_hooks:
-  - post_tool_call
-  - on_session_start
   - transform_tool_result
   - agent_settled
