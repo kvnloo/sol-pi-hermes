@@ -35,6 +35,8 @@ Projection currently supports OpenAI-style `messages` with string tool results. 
 
 Packing excludes existing Pi-style error flags and Hermes JSON content with a nonempty top-level `error`, `success: false`, or an integer nonzero `exit_code` alongside `output`. JSON-object-looking content that cannot be parsed, including truncated bodies or host-appended subdirectory hints, conservatively stays inline too. Successful JSON logs mentioning errors, and error fields nested inside returned data, remain eligible for packing. This guard does not classify arbitrary plain-text failures or unwrap other provider formats.
 
+`obs_recall` caps each successful UTF-8 JSON response at 16 KiB, including escaping and metadata, while retaining the 400-line content cap. Its offsets always count original archived bytes; smaller pages still reconstruct the full original text exactly.
+
 OCC without `agent_settled` is a no-op. Stock Hermes does not emit that Pi event; enabling `onlineContextCompact` records the gate but will not compact until the host fires the hook.
 
 ## Offline validation
@@ -49,6 +51,8 @@ HERMES_SOURCE=/path/to/hermes-agent /path/to/test-python -m unittest discover -s
 The integration test loads this directory plugin through real Hermes discovery, applies real request middleware, and dispatches the registered `obs_recall` tool. It reuses the five existing synthetic CaptureResult fixtures across profiles A→B→A and two session IDs, checking exact first-two sends, smaller third sends, byte-exact paged recall, unchanged request metadata/history, isolation, and unload. On the original PR3 head `b81af04`, the new projection invariant failed: the third provider request was still 70,754 bytes because the non-CLI host had no engine wrapper. A separate legacy-wrapper reproduction packed into `default/` and could not recall from the actual session.
 
 `python3 -m experiments.capture_result_shadow` reports placeholder retention separately from exact recall. These are deterministic integration/storage checks, not live desktop runs, model decisions, tokenizer measurements, cache-cost measurements, or long-session compaction benchmarks. The first two sends count provider attempts; rewriting old tool content later changes the cache prefix. No real-model quality or end-to-end cost improvement is claimed.
+
+Remaining rollout blockers: send counters currently live for the plugin lifetime without eviction. A fresh repeated tool call with the same provider call ID and identical content can inherit an older call's send count and be packed early. Occurrence-safe accounting and session/restart cleanup still need validation before a rollout or model-quality/cost comparison; the current fixes do not resolve those cases.
 
 ## Provenance
 

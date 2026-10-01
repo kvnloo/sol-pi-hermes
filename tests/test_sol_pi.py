@@ -12,6 +12,8 @@ from sol_pi_hermes.config import load_sol_pi_config
 from sol_pi_hermes.epr import LIKELY_SECRET, quote_verify, should_reduce, transform_if_reduced
 from sol_pi_hermes.observation_pack import (
     FULL_SENDS,
+    RECALL_MAX_BYTES,
+    RECALL_MAX_LINES,
     THRESHOLD_BYTES,
     create_observation,
     placeholder_for,
@@ -46,6 +48,35 @@ class ConfigTests(unittest.TestCase):
 
 
 class ObservationPackTests(unittest.TestCase):
+    def test_recall_wire_budget_and_offsets_preserve_all_original_bytes(self) -> None:
+        bodies = ("尾🙂" * 5000, '"\\' * 12000, "\x01" * 20000,
+                  "short line\n" * 3000, "x" * 40000)
+        with tempfile.TemporaryDirectory() as tmp:
+            for number, body in enumerate(bodies):
+                with self.subTest(body=number):
+                    root = Path(tmp) / str(number)
+                    messages = [_big_tool(body)]
+                    counts = {}
+                    for _ in range(FULL_SENDS + 1):
+                        packed = project_messages(messages, root, counts)
+                    obs_id = packed[0]["content"].split("id: ", 1)[1].split("\n", 1)[0]
+                    chunks, offset = [], 0
+                    while True:
+                        wire = recall(root, obs_id, offset)
+                        self.assertLessEqual(len(wire.encode("utf-8")), RECALL_MAX_BYTES)
+                        row = json.loads(wire)
+                        self.assertNotIn("error", row)
+                        header, limits, content = row["content"].split("\n", 2)
+                        self.assertLessEqual(len(row["content"].splitlines()), RECALL_MAX_LINES)
+                        self.assertEqual(row["bytes"], len(content.encode("utf-8")))
+                        self.assertEqual(row["next_offset"], offset + row["bytes"])
+                        chunks.append(content)
+                        if row["eof"]:
+                            break
+                        self.assertGreater(row["next_offset"], offset)
+                        offset = row["next_offset"]
+                    self.assertEqual("".join(chunks).encode("utf-8"), body.encode("utf-8"))
+
     def test_failed_or_ambiguous_json_stays_inline_while_successful_logs_are_packed(self) -> None:
         output = "error: synthetic diagnostic, not itself a failure signal\n" * 300
         failures = (
