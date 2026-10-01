@@ -184,7 +184,12 @@ def ensure_stored(observation: Observation) -> None:
     try:
         fd = os.open(observation.file_path, flags, 0o600)
         try:
-            os.write(fd, observation.text.encode("utf-8"))
+            remaining = memoryview(observation.text.encode("utf-8"))
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError(f"Observation write made no progress for {observation.id}")
+                remaining = remaining[written:]
         finally:
             os.close(fd)
     except FileExistsError:
