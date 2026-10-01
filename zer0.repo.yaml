@@ -1,0 +1,43 @@
+version: 1
+repo: kvnloo/sol-pi-hermes
+id: sol-pi-hermes
+kind: suite
+summary: Hermes-native Python plugin port of SoL-Pi efficiency mechanisms using public Hermes context, tool, and lifecycle seams.
+
+architecture:
+  subsystems:
+    - id: observation-pack
+      name: ObservationPack
+      kind: context
+      summary: Archives large observations behind stable handles and binds request-time context projection to the active Hermes context engine.
+      paths: [sol_pi_hermes/, tests/]
+    - id: action-fusion
+      name: Action fusion
+      kind: efficiency
+      summary: Combines write/patch operations with predictable validation while delegating actual execution to Hermes tools.
+      paths: [sol_pi_hermes/, tests/]
+    - id: evidence-reducer
+      name: Evidence-preserving reducer
+      kind: compression
+      summary: Reduces long diagnostic outputs only when quote verification succeeds and fails open otherwise.
+      paths: [sol_pi_hermes/, tests/]
+    - id: online-context-compact
+      name: Online context compact
+      kind: compression
+      summary: Gates bounded compaction on settled-plan lifecycle events and reuses the built-in Hermes compressor rather than registering a second context engine.
+      paths: [sol_pi_hermes/, tests/]
+
+  implements_mechanisms: [sol-pi-action-fusion, sol-pi-observation-pack, sol-pi-evidence-reducer, sol-pi-online-context-compact]
+  provides_interfaces: []
+  consumes_interfaces: []
+  produces_representations: []
+  consumes_representations: []
+
+  boundaries:
+    owns: [Hermes-native SoL-Pi mechanism implementation, plugin configuration and guards]
+    not_here: [Hermes core runtime authority, canonical SoL-Pi research authority, Zer0 architecture authority]
+
+  evidence:
+    docs: [README.md, PUBLISH.md]
+    tests: [tests/]
+    schemas: [plugin.yaml]
