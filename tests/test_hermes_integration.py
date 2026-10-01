@@ -93,7 +93,9 @@ class HermesIntegrationTests(unittest.TestCase):
                 self.assertIsNone(manager._context_engine)
                 for sid in ("session-1", "session-after-new"):
                     for fixture in fixtures:
-                        text = fixture.provider_text() + "\n" + home.name + "\n尾🙂\r\n"
+                        payload = json.loads(fixture.provider_text())
+                        payload["test_provenance"] = home.name + "\n尾🙂\r\n"
+                        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                         request = {
                             "model": "offline-fixture", "stream": True,
                             "extra_body": {"unchanged": [1, 2]},
@@ -149,6 +151,27 @@ class HermesIntegrationTests(unittest.TestCase):
             self.assertEqual(apply_llm_request_middleware(request).payload, request)
             manager.unload("sol-pi")
             self.assertEqual(self.send(request, "session-1"), request)
+
+    def test_hermes_serialized_terminal_failure_keeps_diagnostics_inline(self):
+        from tools.registry import tool_result
+        from agent.tool_dispatch_helpers import make_tool_result_message
+        from agent.message_metadata import without_persistence_fields
+
+        output = "synthetic terminal diagnostic\n" * 700
+        with self.profile(self.homes[0]):
+            for number, (exit_code, suffix) in enumerate((
+                (1, ""), (1, "\n\n[Subdirectory context discovered: synthetic test instructions]"), (0, ""),
+            )):
+                text = tool_result(output=output, exit_code=exit_code, error=None) + suffix
+                message = make_tool_result_message("terminal", text, f"terminal-{number}")
+                request = {"messages": [without_persistence_fields(message)]}
+                for send in range(4):
+                    projected = self.send(request, "terminal-session")
+                    if exit_code or send < 2:
+                        self.assertTrue(projected == request, "serialized terminal failure was packed")
+                    else:
+                        self.assertLess(len(projected["messages"][0]["content"]), len(text))
+                self.assertEqual(request["messages"][0]["content"], text)
 
 
 if __name__ == "__main__":

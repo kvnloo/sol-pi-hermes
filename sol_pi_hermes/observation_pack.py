@@ -131,12 +131,31 @@ def contains_reducer_receipt(text: str) -> bool:
     return any(line == EVIDENCE_REDUCER_RECEIPT_PREFIX for line in text.split("\n"))
 
 
+def _preserve_serialized_result(text: str) -> bool:
+    """Keep failed or ambiguous JSON-looking tool results inline."""
+    if not text.lstrip().startswith("{"):
+        return False
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        # Hermes may append subdirectory hints to JSON. Truncation can also
+        # remove its closing delimiter: do not infer success from a parse error.
+        return True
+    if not isinstance(payload, dict):
+        return False
+    exit_code = payload.get("exit_code")
+    terminal_failure = "output" in payload and type(exit_code) is int and exit_code != 0
+    return bool(payload.get("error")) or payload.get("success") is False or terminal_failure
+
+
 def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observation | None:
     text = _message_text(message)
     if contains_reducer_receipt(text):
         return None
     size = utf8_len(text)
     if size <= THRESHOLD_BYTES:
+        return None
+    if _preserve_serialized_result(text):
         return None
     if not str(runtime_root):
         raise ValueError("Persistent SoL-Pi runtime directory is unavailable")

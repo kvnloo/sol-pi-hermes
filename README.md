@@ -33,12 +33,14 @@ This plugin **never** calls `ctx.register_context_engine`. ObservationPack uses 
 
 Projection currently supports OpenAI-style `messages` with string tool results. Native Responses `input` envelopes, requests containing non-string tool content (including screenshots and cache-decorated text blocks), and requests without a session/task ID pass through unchanged. Other request fields and message metadata are preserved. Config and archives resolve through Hermes's active profile home; a session's archive is never captured at plugin-registration time.
 
+Packing excludes existing Pi-style error flags and Hermes JSON content with a nonempty top-level `error`, `success: false`, or an integer nonzero `exit_code` alongside `output`. JSON-object-looking content that cannot be parsed, including truncated bodies or host-appended subdirectory hints, conservatively stays inline too. Successful JSON logs mentioning errors, and error fields nested inside returned data, remain eligible for packing. This guard does not classify arbitrary plain-text failures or unwrap other provider formats.
+
 OCC without `agent_settled` is a no-op. Stock Hermes does not emit that Pi event; enabling `onlineContextCompact` records the gate but will not compact until the host fires the hook.
 
 ## Offline validation
 
 Run the standalone suite with `python3 -m unittest discover -s tests`.
-The two real-host integration tests additionally require `HERMES_SOURCE` pointing to a Hermes checkout and its import dependencies. CI pins Hermes to [`bda33b601d194fb8a43e5660c57542aad14aa372`](https://github.com/NousResearch/hermes-agent/commit/bda33b601d194fb8a43e5660c57542aad14aa372) and builds a disposable Python environment with Hermes PM. Run with that interpreter:
+The real-host integration tests additionally require `HERMES_SOURCE` pointing to a Hermes checkout and its import dependencies. CI pins Hermes to [`bda33b601d194fb8a43e5660c57542aad14aa372`](https://github.com/NousResearch/hermes-agent/commit/bda33b601d194fb8a43e5660c57542aad14aa372) and builds a disposable Python environment with Hermes PM. Run with that interpreter:
 
 ```bash
 HERMES_SOURCE=/path/to/hermes-agent /path/to/test-python -m unittest discover -s tests -v
