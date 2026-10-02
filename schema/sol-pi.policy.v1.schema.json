@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kvnloo/sol-pi-hermes/main/schema/sol-pi.policy.v1.schema.json",
+  "title": "SoL-Pi sol-pi.json policy v1 (shared host-port)",
+  "description": "Operator sol-pi.json for kvnloo/sol-pi-hermes and kvnloo/sol-pi-omp. Keys match NVlabs/SoL-Pi version 1. This is shared POLICY across two host ports, not a third plugin ABI. ObservationPack FULL_SENDS and thresholdBytes are implementation constants in $defs, not operator keys (unknown keys are rejected).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Only supported sol-pi.json version."
+    },
+    "actionFusion": {
+      "type": "boolean",
+      "description": "Optional follow-up then_run on file mutation."
+    },
+    "observationPack": {
+      "type": "boolean",
+      "description": "Archive large tool results and project placeholders after FULL_SENDS."
+    },
+    "evidencePreservingReducer": {
+      "type": "boolean",
+      "description": "Quote-verified reduction of long diagnostic logs."
+    },
+    "evidencePreservingReducerProvider": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional EPR provider namespace in the host model registry."
+    },
+    "evidencePreservingReducerModel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional EPR model id."
+    },
+    "onlineContextCompact": {
+      "type": "boolean",
+      "description": "Plan-boundary compact only after the host settle event."
+    },
+    "cacheWriteReadRatio": {
+      "type": "number",
+      "minimum": 0,
+      "description": "OCC cache-write / cache-read economic ratio. Default 12.5."
+    }
+  },
+  "$defs": {
+    "observationPackConstants": {
+      "title": "ObservationPack constants (not sol-pi.json keys)",
+      "description": "Hardcoded in NVlabs/SoL-Pi ObservationPack. Both host ports must match. Do not add these names to the operator file.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["FULL_SENDS", "thresholdBytes"],
+      "properties": {
+        "FULL_SENDS": {
+          "const": 2,
+          "description": "Provider requests that still carry the full payload before the placeholder takes over."
+        },
+        "thresholdBytes": {
+          "const": 10240,
+          "description": "Only tool results larger than 10 * 1024 bytes participate."
+        }
+      }
+    }
+  }
+}
