@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 THEN_RUN_SUCCEEDED = "[then_run:succeeded]"
 THEN_RUN_FAILED = "[then_run:failed]"
+THEN_RUN_PENDING = "[then_run:pending]"
 THEN_RUN_SKIPPED = "[then_run:skipped]"
 
 THEN_RUN_SCHEMA = {
@@ -86,6 +87,20 @@ def _reported_failure(result: str) -> str | None:
     return None
 
 
+def _reported_pending(result: str) -> bool:
+    """A terminal process receipt is not completion, even with launch exit code 0."""
+    try:
+        payload = json.loads(result)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("status") == "yielded_to_background":
+        return True
+    session_id = payload.get("session_id")
+    return isinstance(session_id, str) and bool(session_id.strip())
+
+
 def execute_mutation_then_run(
     *,
     mutate: Callable[[], str],
@@ -120,10 +135,13 @@ def execute_mutation_then_run(
         assert_unchanged_before_command(absolute_path, mutation_hash)
         output = run_command(str(then_run.get("command") or ""), then_run.get("timeout"))
         failure = _reported_failure(output)
+        status = THEN_RUN_FAILED if failure else (
+            THEN_RUN_PENDING if _reported_pending(output) else THEN_RUN_SUCCEEDED
+        )
         return json.dumps(
             {
                 "mutation": mutation_result,
-                "then_run": THEN_RUN_FAILED if failure else THEN_RUN_SUCCEEDED,
+                "then_run": status,
                 "output": output,
                 **({"error": failure} if failure else {}),
             }

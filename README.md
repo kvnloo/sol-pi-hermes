@@ -35,7 +35,9 @@ OCC without `agent_settled` is a no-op. Stock Hermes does not emit that Pi event
 
 Action Fusion treats returned Hermes JSON errors, `success: false`, and integer nonzero exit codes as failures. A failed write or patch skips the chained command even when the old target file still exists. A failed command retains its output and reports `[then_run:failed]`; successful and exception-based paths keep their existing behavior. Tests use temporary files and harmless callbacks, with no provider or live shell calls.
 
-Known limitation: Hermes commands that yield to the background without a completed exit code still receive the existing `[then_run:succeeded]` label. This failure-reporting fix does not wait for background completion or claim that outcome is verified.
+Commands that yield to the background or return a nonblank string process `session_id` report `[then_run:pending]`. A background launch's `exit_code: 0` only confirms that it started; it does not prove completion. Reported failures still take precedence. The complete terminal receipt, including the process ID and follow-up instructions, is retained in `output`.
+
+Hermes's existing process notifications or `process` tool own background completion. Action Fusion does not wait, poll, rerun the command, or manage a new process lifecycle. Successful completed foreground results and legacy unstructured callbacks keep their existing behavior.
 
 ## Provenance
 
