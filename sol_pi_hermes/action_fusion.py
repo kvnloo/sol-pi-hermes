@@ -101,6 +101,18 @@ def _reported_pending(result: str) -> bool:
     return isinstance(session_id, str) and bool(session_id.strip())
 
 
+def _mutation_path(result: str, fallback: Path) -> Path:
+    """Use the native mutation receipt's path after task-scoped resolution."""
+    try:
+        payload = json.loads(result)
+    except (TypeError, ValueError):
+        return fallback
+    resolved = payload.get("resolved_path") if isinstance(payload, dict) else None
+    if isinstance(resolved, str) and Path(resolved).is_absolute():
+        return Path(resolved)
+    return fallback
+
+
 def execute_mutation_then_run(
     *,
     mutate: Callable[[], str],
@@ -131,6 +143,7 @@ def execute_mutation_then_run(
         })
 
     try:
+        absolute_path = _mutation_path(mutation_result, absolute_path)
         mutation_hash = file_sha256(absolute_path)
         assert_unchanged_before_command(absolute_path, mutation_hash)
         output = run_command(str(then_run.get("command") or ""), then_run.get("timeout"))
