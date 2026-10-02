@@ -68,6 +68,24 @@ def assert_unchanged_before_command(path: Path, mutation_hash: str) -> None:
         raise OSError(f"{THEN_RUN_SKIPPED} target content changed after the fused mutation; the command was not run.")
 
 
+def _reported_failure(result: str) -> str | None:
+    """Hermes tool dispatch reports failures as JSON, not only exceptions."""
+    try:
+        payload = json.loads(result)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("error"):
+        return str(payload["error"])
+    if payload.get("success") is False:
+        return str(payload.get("message") or "Tool reported an unsuccessful result")
+    exit_code = payload.get("exit_code")
+    if type(exit_code) is int and exit_code != 0:
+        return f"Command exited with code {exit_code}"
+    return None
+
+
 def execute_mutation_then_run(
     *,
     mutate: Callable[[], str],
@@ -89,15 +107,25 @@ def execute_mutation_then_run(
     if not then_run:
         return mutation_result if isinstance(mutation_result, str) else json.dumps({"result": mutation_result})
 
+    failure = _reported_failure(mutation_result)
+    if failure:
+        return json.dumps({
+            "mutation": mutation_result,
+            "then_run": THEN_RUN_SKIPPED,
+            "error": f"{failure}\n\n{THEN_RUN_SKIPPED} The file mutation did not complete successfully; the command was not run.",
+        })
+
     try:
         mutation_hash = file_sha256(absolute_path)
         assert_unchanged_before_command(absolute_path, mutation_hash)
         output = run_command(str(then_run.get("command") or ""), then_run.get("timeout"))
+        failure = _reported_failure(output)
         return json.dumps(
             {
                 "mutation": mutation_result,
-                "then_run": THEN_RUN_SUCCEEDED,
+                "then_run": THEN_RUN_FAILED if failure else THEN_RUN_SUCCEEDED,
                 "output": output,
+                **({"error": failure} if failure else {}),
             }
         )
     except Exception as exc:
