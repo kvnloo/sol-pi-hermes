@@ -11,3 +11,5 @@ provides_tools:
   - obs_recall
   - sol_pi_write
   - sol_pi_patch
+provides_middleware:
+  - llm_request
