@@ -9,7 +9,7 @@ architecture:
     - id: observation-pack
       name: ObservationPack
       kind: context
-      summary: Archives large observations behind stable handles and binds request-time context projection to the active Hermes context engine.
+      summary: Archives large observations behind stable handles and projects them into outgoing provider requests through an llm_request middleware.
       paths: [sol_pi_hermes/, tests/]
     - id: action-fusion
       name: Action fusion
@@ -38,6 +38,6 @@ architecture:
     not_here: [Hermes core runtime authority, canonical SoL-Pi research authority, Zer0 architecture authority]
 
   evidence:
-    docs: [README.md, PUBLISH.md]
+    docs: [README.md]
     tests: [tests/]
     schemas: [plugin.yaml]

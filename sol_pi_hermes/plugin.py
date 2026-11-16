@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
 
 from .action_fusion import PATCH_SCHEMA, WRITE_SCHEMA, execute_mutation_then_run
 from .config import SolPiConfig, load_sol_pi_config
-from .epr import transform_if_reduced
 from .observation_pack import (
+    project_request,
     recall,
     runtime_root_for_session,
-    wrap_select_context,
 )
-from .occ import OnlineCompactGate
 
 logger = logging.getLogger(__name__)
 
@@ -45,25 +42,14 @@ def _cwd(**kwargs: Any) -> Path:
     return Path(cwd) if cwd else Path.cwd()
 
 
-def _engine_from_ctx(ctx: Any) -> Any | None:
-    manager = getattr(ctx, "_manager", None)
-    if manager is not None:
-        engine = getattr(manager, "_context_engine", None)
-        if engine is not None:
-            return engine
-        cli = getattr(manager, "_cli_ref", None)
-        agent = getattr(cli, "agent", None) if cli is not None else None
-        if agent is not None:
-            return getattr(agent, "context_compressor", None)
-    return None
-
-
 def register(ctx: Any, config: SolPiConfig | None = None) -> None:
-    """Wire tools and hooks. Never registers a ContextEngine."""
+    """Wire ObservationPack (llm_request middleware + obs_recall) and Action Fusion tools.
+
+    Never registers a ContextEngine. EPR and OCC are ported in ``epr.py`` / ``occ.py`` but not
+    wired: EPR needs a reducer model and OCC needs an ``agent_settled`` hook Hermes doesn't have.
+    """
     cfg = config or load_sol_pi_config()
     sent_counts: dict[str, int] = {}
-    wrapped_engines: set[int] = set()
-    gate = OnlineCompactGate(enabled=cfg.online_context_compact)
     roots: dict[str, Path] = {}
 
     def root_for(**kwargs: Any) -> Path:
@@ -72,17 +58,10 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             roots[sid] = runtime_root_for_session(sid)
         return roots[sid]
 
-    def maybe_wrap(**kwargs: Any) -> None:
-        if not cfg.observation_pack:
-            return
-        engine = _engine_from_ctx(ctx)
-        if engine is None:
-            return
-        marker = id(engine)
-        if marker in wrapped_engines:
-            return
-        wrap_select_context(engine, root_for(**kwargs), sent_counts)
-        wrapped_engines.add(marker)
+    def on_llm_request(request=None, **kwargs: Any):
+        if not cfg.observation_pack or not isinstance(request, dict):
+            return None
+        return project_request(request, root_for(**kwargs), sent_counts)
 
     def obs_recall(args: dict, **kwargs: Any) -> str:
         return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
@@ -125,31 +104,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             run_command=_run_terminal,
         )
 
-    def on_session_start(**kwargs: Any) -> None:
-        maybe_wrap(**kwargs)
-
-    def on_post_tool_call(**kwargs: Any) -> None:
-        maybe_wrap(**kwargs)
-
-    def on_transform_tool_result(tool_name=None, args=None, result=None, **kwargs: Any):
-        if not cfg.evidence_preserving_reducer:
-            return None
-        args = args if isinstance(args, dict) else {}
-        text = result if isinstance(result, str) else json.dumps(result)
-        return transform_if_reduced(tool_name=str(tool_name or ""), args=args, result=text, reducer=None)
-
-    def on_agent_settled(**kwargs: Any) -> None:
-        allowed = gate.on_agent_settled()
-        if allowed:
-            logger.info("sol-pi OCC: agent_settled; compact via built-in compressor only")
-        else:
-            logger.debug("sol-pi OCC skipped: %s", gate.last_reason)
-
     ctx.register_tool(name="obs_recall", toolset="sol-pi", schema=OBS_RECALL_SCHEMA, handler=obs_recall)
     ctx.register_tool(name="sol_pi_write", toolset="sol-pi", schema=WRITE_SCHEMA, handler=sol_pi_write)
     ctx.register_tool(name="sol_pi_patch", toolset="sol-pi", schema=PATCH_SCHEMA, handler=sol_pi_patch)
-    ctx.register_hook("on_session_start", on_session_start)
-    ctx.register_hook("post_tool_call", on_post_tool_call)
-    ctx.register_hook("transform_tool_result", on_transform_tool_result)
-    ctx.register_hook("agent_settled", on_agent_settled)
-    maybe_wrap()
+    ctx.register_middleware("llm_request", on_llm_request)

@@ -16,8 +16,8 @@ from sol_pi_hermes.observation_pack import (
     create_observation,
     placeholder_for,
     project_messages,
+    project_request,
     recall,
-    wrap_select_context,
 )
 from sol_pi_hermes.occ import OnlineCompactGate
 from sol_pi_hermes.plugin import register
@@ -92,25 +92,23 @@ class ObservationPackTests(unittest.TestCase):
             self.assertIn("content", payload)
             self.assertIn("next_offset", payload)
 
-    def test_wrap_select_context_does_not_replace_compress(self) -> None:
+    def test_llm_request_projection_leaves_stored_messages(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            engine = SimpleNamespace(compress=lambda messages: messages, should_compress=lambda *a, **k: False)
-
-            def original_select(messages, **kwargs):
-                return None
-
-            engine.select_context = original_select
             body = "Z\n" * (THRESHOLD_BYTES // 2 + 40)
             msgs = [_big_tool(body)]
+            request = {"model": "m", "messages": msgs}
             sent: dict[str, int] = {}
-            wrap_select_context(engine, root, sent)
-            engine.select_context(msgs)
-            engine.select_context(msgs)
-            out = engine.select_context(msgs)
-            self.assertTrue(callable(engine.compress))
-            self.assertTrue(any("obs_" in str(m.get("content")) for m in out))
+            results = [project_request(request, root, sent) for _ in range(FULL_SENDS + 1)]
+            self.assertIsNone(results[0])
+            out = results[-1]
+            self.assertEqual(out["request"]["model"], "m")
+            self.assertTrue(any("obs_" in str(m.get("content")) for m in out["request"]["messages"]))
             self.assertEqual(msgs[0]["content"], body)
+
+    def test_llm_request_without_messages_is_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(project_request({"input": "x"}, Path(tmp), {}))
 
 
 class OccTests(unittest.TestCase):
@@ -189,16 +187,15 @@ class FusionTests(unittest.TestCase):
 class RegisterTests(unittest.TestCase):
     def test_register_does_not_register_context_engine(self) -> None:
         ctx = MagicMock()
-        ctx._manager = SimpleNamespace(_context_engine=None, _cli_ref=None)
         from sol_pi_hermes.config import SolPiConfig
 
         register(ctx, SolPiConfig(observation_pack=True))
         ctx.register_context_engine.assert_not_called()
         names = [c.kwargs["name"] for c in ctx.register_tool.call_args_list]
         self.assertIn("obs_recall", names)
-        hooks = [c.args[0] for c in ctx.register_hook.call_args_list]
-        self.assertIn("agent_settled", hooks)
-        self.assertIn("transform_tool_result", hooks)
+        ctx.register_hook.assert_not_called()
+        kinds = [c.args[0] for c in ctx.register_middleware.call_args_list]
+        self.assertEqual(kinds, ["llm_request"])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 Port of NVlabs/SoL-Pi observation-pack. The stored conversation is never truncated.
 Projection happens on a copy of the provider request messages (Hermes
-``ContextEngine.select_context``), not via ``transform_tool_result``.
+``llm_request`` middleware), not via ``transform_tool_result``.
 """
 
 from __future__ import annotations
@@ -61,7 +61,9 @@ def ledger_path(runtime_root: Path) -> Path:
 
 
 def runtime_root_for_session(session_id: str, hermes_home: Path | None = None) -> Path:
-    home = hermes_home or (Path.home() / ".hermes")
+    from .config import _hermes_home
+
+    home = hermes_home or _hermes_home()
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_id) or "default"
     return home / "sol-pi" / safe
 
@@ -396,29 +398,16 @@ def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
     )
 
 
-def wrap_select_context(engine: Any, runtime_root: Path, sent_counts: dict[str, int]) -> None:
-    """Compose ObservationPack onto an existing engine without replacing it.
+def project_request(request: Mapping[str, Any], runtime_root: Path, sent_counts: dict[str, int]) -> dict[str, Any] | None:
+    """``llm_request`` middleware body: project ``messages`` in the outgoing provider kwargs.
 
-    Hermes skips the ABC default ``select_context``. Binding an instance method
-    enables request-time projection while leaving ``compress`` / ``should_compress``
-    on the live engine.
+    Returns ``{"request": ...}`` only when the projection changed something, so Hermes sends
+    the request untouched otherwise. Stored history is never mutated.
     """
-    original = getattr(engine, "select_context", None)
-
-    def select_context(request_messages, *, conversation_messages=None, incoming_message=None, budget_tokens=0, **kwargs):
-        selected = None
-        if callable(original):
-            try:
-                selected = original(
-                    request_messages,
-                    conversation_messages=conversation_messages,
-                    incoming_message=incoming_message,
-                    budget_tokens=budget_tokens,
-                    **kwargs,
-                )
-            except TypeError:
-                selected = original(request_messages)
-        base = selected if isinstance(selected, list) and selected else request_messages
-        return project_messages(base, runtime_root, sent_counts)
-
-    engine.select_context = select_context  # instance attr; Hermes calls without injecting self
+    messages = request.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    projected = project_messages(messages, runtime_root, sent_counts)
+    if projected == messages:
+        return None
+    return {"request": {**request, "messages": projected}, "source": "sol-pi", "reason": "observation-pack"}

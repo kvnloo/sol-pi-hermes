@@ -39,7 +39,11 @@ class SolPiConfig:
 
 
 def _hermes_home() -> Path:
-    return Path.home() / ".hermes"
+    try:
+        from hermes_constants import get_hermes_home  # active profile's home
+        return Path(get_hermes_home())
+    except Exception:  # running outside Hermes (unit tests)
+        return Path.home() / ".hermes"
 
 
 def find_config_path(cwd: str | Path | None = None, hermes_home: Path | None = None) -> Path | None:
