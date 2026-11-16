@@ -141,7 +141,8 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     content_hash = hash_text(text)
     tool_name = tool_name_of(message)
     tool_call_id = tool_call_id_of(message)
-    obs_id = f"obs_{hash_text(f'{tool_name}\0{tool_call_id}\0{content_hash}')[:24]}"
+    key = f"{tool_name}\0{tool_call_id}\0{content_hash}"  # nested f-string with \0 needs Python 3.12+
+    obs_id = f"obs_{hash_text(key)[:24]}"
     return Observation(
         id=obs_id,
         content_hash=content_hash,
