@@ -45,9 +45,9 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(all(case["control_unchanged"] for case in report["cases"]))
         self.assertTrue(all(send["latency_ns"] == 100 for case in report["cases"] for send in case["sends"]))
 
-    def test_large_tree_modal_and_ambiguous_hide_structured_fields_but_recall_exactly(self):
+    def test_large_tree_and_repeated_hide_structured_fields_but_recall_exactly(self):
         fixtures = {f["name"]: f for f in _fixture_set()["cases"]}
-        for name in ("large_tree", "modal", "ambiguous", "stale", "repeated"):
+        for name in ("large_tree", "repeated"):
             with self.subTest(name=name):
                 case = evaluate_fixture(fixtures[name], clock=_deterministic_clock())
                 first, second, third = case["sends"]
@@ -80,9 +80,9 @@ class ObservationShadowTests(unittest.TestCase):
             self.assertEqual(send["retained_element_tokens"], [])
             self.assertEqual(send["lost_fields_after_recall"], [])
 
-    def test_small_and_image_bearing_captures_are_not_projected(self):
+    def test_small_modal_ambiguous_stale_and_image_captures_pass_through(self):
         fixtures = {x["name"]: x for x in _fixture_set()["cases"]}
-        for name in ("small", "multimodal"):
+        for name in ("small", "modal", "ambiguous", "stale", "multimodal"):
             with self.subTest(name=name):
                 case = evaluate_fixture(fixtures[name], clock=_deterministic_clock())
                 self.assertEqual(case["saved_bytes"], 0)
