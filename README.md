@@ -50,3 +50,28 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+## Synthetic ObservationPack measurement
+
+```sh
+python -m benchmarks.observation_pack --requests 4
+# Optional: install tiktoken separately, then choose an explicit encoding:
+python -m benchmarks.observation_pack --requests 4 --encoding cl100k_base
+```
+
+This offline harness projects the same synthetic request repeatedly through the
+real middleware, records each serialized control/projected request size, and
+verifies that the source transcript and full UTF-8 recall survive unchanged.
+Small, error and mixed-image controls must not count as packed savings.
+The default counter is explicitly a `ceil(unicode characters / 4)` **estimate**;
+`--encoding` instead measures the named tokenizer on that same serialization.
+A missing tokenizer fails rather than silently substituting estimates.
+
+Neither counter is provider billing: chat framing, tools/schema overhead, cached
+input pricing, latency and quality are not measured. Recall accounting subtracts
+one complete recall (**all response pages**) per unique packed observation; it excludes
+recall call arguments and later requests carrying that recalled history. Negative
+net results remain negative. This is a bounded synthetic microbenchmark, not a
+real CaptureResult shadow evaluation, a compression-equivalence proof or a
+promise of production cost savings. No live transcript, network model call or
+installed Hermes profile is used; archives live in a temporary directory.
