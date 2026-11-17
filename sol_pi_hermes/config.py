@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -62,6 +63,12 @@ def load_sol_pi_config(
     *,
     raw: Mapping[str, Any] | None = None,
 ) -> SolPiConfig:
+    """Load and validate a shared v1 operator policy.
+
+    A missing file uses all-off defaults. Existing callers may use raw={}
+    for the same defaults; an actual file or non-empty raw mapping must
+    explicitly declare version 1.
+    """
     if raw is None:
         path = find_config_path(cwd, hermes_home)
         if path is None:
@@ -78,8 +85,11 @@ def load_sol_pi_config(
     for key in parsed:
         if key not in CONFIG_KEYS:
             raise ValueError(f"Unknown SoL-Pi config key: {key}")
+    if "version" not in parsed and (raw is None or bool(parsed)):
+        raise ValueError("SoL-Pi config version is required (must be 1)")
     version = parsed.get("version", 1)
-    if version != 1:
+    # bool is an int subclass, but JSON Schema const 1 does not accept true.
+    if isinstance(version, bool) or not isinstance(version, (int, float)) or version != 1:
         raise ValueError("SoL-Pi config version must be 1")
 
     def _bool(key: str) -> bool:
@@ -90,6 +100,12 @@ def load_sol_pi_config(
 
     ratio = parsed.get("cacheWriteReadRatio", DEFAULT_CACHE_WRITE_READ_RATIO)
     if not isinstance(ratio, (int, float)) or isinstance(ratio, bool) or ratio < 0:
+        raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number")
+    try:
+        ratio = float(ratio)
+    except OverflowError as exc:
+        raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number") from exc
+    if not isfinite(ratio):
         raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number")
 
     def _str(key: str, default: str) -> str:
@@ -110,5 +126,5 @@ def load_sol_pi_config(
             "evidencePreservingReducerProvider", DEFAULT_REDUCER_PROVIDER
         ),
         online_context_compact=_bool("onlineContextCompact"),
-        cache_write_read_ratio=float(ratio),
+        cache_write_read_ratio=ratio,
     )
