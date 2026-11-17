@@ -50,3 +50,35 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+
+## Offline CaptureResult shadow evaluation (issue #2)
+
+From a source checkout (Python stdlib only):
+
+```bash
+python -m sol_pi_hermes.observation_eval --output /tmp/sol-pi-observation-shadow.json
+python -m unittest discover -s tests
+```
+
+The evaluator replays frozen, **synthetic** `CaptureResult`-shaped fixtures alongside
+Hermes model-visible text JSON or multimodal capture blocks, using the existing
+`project_request` and `obs_recall` implementation. It **does not** replace any
+capture, send a provider request, issue computer-use actions, or enable a policy.
+The first two full sends remain control observations; later sends are projected
+only when the current ObservationPack middleware supports their content type.
+
+The JSON report records original/projected UTF-8 bytes, estimated text-token
+savings, element counts, surviving indices and opaque tokens, structured fields
+hidden from the immediate model view, exact field recovery after paged recall,
+and locally measured projection latency. The estimator uses four characters per
+token, **not** a model tokenizer; image token costs, cache effects, and action
+quality are not measured. Timings vary by machine. A native image-bearing
+multimodal result is intentionally passed through and reports **zero** savings.
+Tokens present only in the original `CaptureResult` but never serialized
+by Hermes are not blamed on ObservationPack.
+
+The snapshots follow the `CaptureResult` / `_text_capture_payload` contract in
+NousResearch/hermes-agent at `3f5a11f624c8c3c7d0e99ddd8b4b7da97fcb7940`. They are not
+real-device recordings. Real, consented/redacted capture traces and live agent
+equivalence remain separate gates before considering model-visible activation.
