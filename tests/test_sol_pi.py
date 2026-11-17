@@ -178,7 +178,7 @@ class FusionTests(unittest.TestCase):
                     mutate=mutate,
                     absolute_path=path,
                     then_run={"command": "python f.py"},
-                    run_command=lambda cmd, _t: f"ran {cmd}",
+                    run_command=lambda cmd, _t: json.dumps({"exit_code": 0, "output": f"ran {cmd}"}),
                 )
             )
             self.assertEqual(out["then_run"], THEN_RUN_SUCCEEDED)

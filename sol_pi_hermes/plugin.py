@@ -37,9 +37,9 @@ def _session_id(**kwargs: Any) -> str:
     return str(kwargs.get("session_id") or kwargs.get("task_id") or "default")
 
 
-def _cwd(**kwargs: Any) -> Path:
-    cwd = kwargs.get("cwd") or kwargs.get("working_directory")
-    return Path(cwd) if cwd else Path.cwd()
+def _tool_context(kwargs: dict[str, Any]) -> dict[str, Any]:
+    # Only host-provided routing identities are nested-dispatch capabilities.
+    return {key: kwargs[key] for key in ("task_id", "session_id") if key in kwargs}
 
 
 def register(ctx: Any, config: SolPiConfig | None = None) -> None:
@@ -66,45 +66,50 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     def obs_recall(args: dict, **kwargs: Any) -> str:
         return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
 
-    def _run_terminal(command: str, timeout: float | None) -> str:
+    def _run_terminal(command: str, timeout: float | None, context: dict[str, Any]) -> str:
         payload: dict[str, Any] = {"command": command}
         if timeout is not None:
             payload["timeout"] = timeout
-        return str(ctx.dispatch_tool("terminal", payload))
+        return str(ctx.dispatch_tool("terminal", payload, **context))
 
     def sol_pi_write(args: dict, **kwargs: Any) -> str:
         path = Path(str(args.get("path") or ""))
+        context = _tool_context(kwargs)
         content = str(args.get("content") or "")
 
         def mutate() -> str:
-            return str(ctx.dispatch_tool("write_file", {"path": str(path), "content": content}))
+            return str(ctx.dispatch_tool("write_file", {"path": str(path), "content": content}, **context))
 
         if not cfg.action_fusion:
             return mutate()
         return execute_mutation_then_run(
             mutate=mutate,
-            absolute_path=path if path.is_absolute() else _cwd(**kwargs) / path,
+            # PluginContext does not attest that the backend path is host-local.
+            absolute_path=None,
             then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
-            run_command=_run_terminal,
+            run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
     def sol_pi_patch(args: dict, **kwargs: Any) -> str:
         path = Path(str(args.get("path") or ""))
+        context = _tool_context(kwargs)
 
         def mutate() -> str:
             payload = {k: v for k, v in args.items() if k != "then_run"}
-            return str(ctx.dispatch_tool("patch", payload))
+            return str(ctx.dispatch_tool("patch", payload, **context))
 
         if not cfg.action_fusion:
             return mutate()
         return execute_mutation_then_run(
             mutate=mutate,
-            absolute_path=path if path.is_absolute() else _cwd(**kwargs) / path,
+            # PluginContext does not attest that the backend path is host-local.
+            absolute_path=None,
             then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
-            run_command=_run_terminal,
+            run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
     ctx.register_tool(name="obs_recall", toolset="sol-pi", schema=OBS_RECALL_SCHEMA, handler=obs_recall)
-    ctx.register_tool(name="sol_pi_write", toolset="sol-pi", schema=WRITE_SCHEMA, handler=sol_pi_write)
-    ctx.register_tool(name="sol_pi_patch", toolset="sol-pi", schema=PATCH_SCHEMA, handler=sol_pi_patch)
+    if cfg.action_fusion:
+        ctx.register_tool(name="sol_pi_write", toolset="sol-pi", schema=WRITE_SCHEMA, handler=sol_pi_write)
+        ctx.register_tool(name="sol_pi_patch", toolset="sol-pi", schema=PATCH_SCHEMA, handler=sol_pi_patch)
     ctx.register_middleware("llm_request", on_llm_request)
