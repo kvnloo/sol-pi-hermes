@@ -72,7 +72,7 @@ class SessionIsolationTests(unittest.TestCase):
             home = Path(tmp)
             ids = [
                 "../../../../tmp", "tenant_a", "tenant/a", "tenant:a",
-                "tenant\\a", "☃" * 500, "x" * 1000, "",
+                "tenant\\a", "☃" * 500, "x" * 1000, "", "a\ud800b", "a\udc00b",
             ]
             paths = [runtime_root_for_session(value, home) for value in ids]
             self.assertEqual(len(paths), len(set(paths)))
