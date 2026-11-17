@@ -1,7 +1,13 @@
+import contextlib
 import copy
+import io
+import json
+import sys
 import unittest
+from unittest import mock
 
-from benchmarks.observation_pack import fixtures, measure
+from benchmarks import observation_pack
+from benchmarks.observation_pack import fixtures, main, measure
 
 
 class MeasurementTests(unittest.TestCase):
@@ -49,3 +55,25 @@ class MeasurementTests(unittest.TestCase):
     def test_invalid_request_count(self):
         with self.assertRaises(ValueError):
             measure([], requests=0)
+
+    def test_recall_accounting_covers_every_page(self):
+        pages = []
+        real = observation_pack.recall
+        with mock.patch.object(observation_pack, 'recall',
+                               lambda *a: pages.append(real(*a)) or pages[-1]):
+            result = measure(fixtures()['large_ascii'])
+        self.assertGreater(len(pages), 1)
+        self.assertTrue(result['recall_roundtrip'])
+        self.assertEqual(result['recall_response_bytes'],
+                         sum(len(observation_pack.wire(json.loads(p)).encode()) for p in pages))
+
+    def test_missing_tokenizer_fails_without_estimate_fallback(self):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(sys.modules, {'tiktoken': None}), \
+                mock.patch.object(sys, 'argv', ['x', '--encoding', 'cl100k_base']), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn('cannot load requested tokenizer', err.getvalue())
+        self.assertEqual(out.getvalue(), '')
