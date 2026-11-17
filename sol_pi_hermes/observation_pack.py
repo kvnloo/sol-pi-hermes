@@ -11,10 +11,16 @@ import hashlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX hosts: O_APPEND single-record writes only
+    fcntl = None
 
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
@@ -227,12 +233,34 @@ def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
     path = ledger_path(runtime_root)
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **dict(entry)}
-    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    record = (json.dumps(payload) + "\n").encode("utf-8")
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     if path.is_symlink():
         raise OSError("Observation ledger must not be a symlink")
     fd = os.open(path, flags, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload) + "\n")
+    try:
+        _try_lock(fd)
+        # A writer that died mid-record leaves no trailing newline; never glue onto it.
+        size = os.fstat(fd).st_size
+        if size and os.lseek(fd, size - 1, os.SEEK_SET) >= 0 and os.read(fd, 1) != b"\n":
+            record = b"\n" + record
+        view = memoryview(record)
+        while view:
+            view = view[os.write(fd, view):]
+    finally:
+        os.close(fd)
+
+
+def _try_lock(fd: int) -> None:
+    """Serialize cooperating appenders for ~100ms at most; never stall a provider request."""
+    if fcntl is None:
+        return
+    for _ in range(50):
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            time.sleep(0.002)
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:

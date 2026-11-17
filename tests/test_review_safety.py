@@ -1,6 +1,8 @@
 import json
 import os
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -98,3 +100,38 @@ class ReviewSafetyTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 append_ledger(root, {'event': 'never'})
             self.assertEqual(target.read_text(), 'unchanged')
+
+    def test_ledger_append_after_torn_tail_keeps_new_record_whole(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = ledger_path(root)
+            path.parent.mkdir()
+            torn = b'{"event": "ok"}\n{"event": "tor'
+            path.write_bytes(torn)
+            append_ledger(root, {'event': 'after'})
+            data = path.read_bytes()
+            self.assertTrue(data.startswith(torn + b'\n'))
+            self.assertEqual(json.loads(data.splitlines()[-1])['event'], 'after')
+            append_ledger(root, {'event': 'healthy'})
+            self.assertEqual(path.read_bytes().count(b'\n\n'), 0)
+
+    def test_ledger_short_writes_complete_one_record(self):
+        real_write = os.write
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.os.write', lambda fd, b: real_write(fd, bytes(b[:7]))):
+                append_ledger(root, {'event': 'short', 'blob': 'z' * 100})
+            self.assertEqual(json.loads(ledger_path(root).read_text())['blob'], 'z' * 100)
+
+    def test_ledger_concurrent_writers_never_interleave(self):
+        # Regression guard: tearing was not reproducible on Linux before the fix.
+        with tempfile.TemporaryDirectory() as tmp:
+            code = ('import sys; from pathlib import Path; from sol_pi_hermes.observation_pack import append_ledger\n'
+                    'for i in range(20): append_ledger(Path(sys.argv[1]), {"w": sys.argv[2], "blob": sys.argv[2] * 20000})')
+            env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1])}
+            procs = [subprocess.Popen([sys.executable, '-c', code, tmp, str(n)], env=env) for n in range(6)]
+            for proc in procs:
+                self.assertEqual(proc.wait(timeout=60), 0)
+            records = [json.loads(line) for line in ledger_path(Path(tmp)).read_bytes().splitlines()]
+            self.assertEqual(len(records), 120)
+            self.assertTrue(all(r['blob'] == r['w'] * 20000 for r in records))
