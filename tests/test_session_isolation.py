@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 from sol_pi_hermes.config import SolPiConfig
 from sol_pi_hermes.observation_pack import (
+    FULL_SENDS,
     THRESHOLD_BYTES,
     create_observation,
     ensure_stored,
+    project_request,
+    recall,
     runtime_root_for_session,
 )
 from sol_pi_hermes.plugin import register
@@ -80,6 +83,27 @@ class SessionIsolationTests(unittest.TestCase):
                 self.assertEqual(path.parent, home / "sol-pi")
                 self.assertLessEqual(len(path.name), 105)
                 self.assertRegex(path.name, r"^[A-Za-z0-9_-]+-[0-9a-f]{64}$")
+
+    def test_retained_transcript_rearchives_under_new_root(self):
+        # README upgrade claim: old slug-only archives are ignored, and the
+        # transcript's full observation is archived again under the new root.
+        body = "retained output\n" * THRESHOLD_BYTES
+        messages = [{"role": "tool", "name": "terminal", "tool_call_id": "t", "content": body}]
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            legacy = home / "sol-pi" / "tenant_a"
+            root = runtime_root_for_session("tenant/a", home)
+            old = create_observation(messages[0], legacy)
+            ensure_stored(old)
+            self.assertIn("error", json.loads(recall(root, old.id, 0)))
+            sent = {}
+            for _ in range(FULL_SENDS + 1):
+                out = project_request({"messages": messages}, root, sent)
+            packed = out["request"]["messages"][0]["content"]
+            obs_id = packed.split("id: ", 1)[1].split("\n", 1)[0]
+            self.assertEqual(obs_id, old.id)
+            self.assertIn("retained output", json.loads(recall(root, obs_id, 0))["content"])
+            self.assertEqual(messages[0]["content"], body)
 
 
 if __name__ == "__main__":
