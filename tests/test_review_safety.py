@@ -1,3 +1,5 @@
+import errno
+import fcntl
 import json
 import os
 import stat
@@ -122,6 +124,17 @@ class ReviewSafetyTests(unittest.TestCase):
             with patch('sol_pi_hermes.observation_pack.os.write', lambda fd, b: real_write(fd, bytes(b[:7]))):
                 append_ledger(root, {'event': 'short', 'blob': 'z' * 100})
             self.assertEqual(json.loads(ledger_path(root).read_text())['blob'], 'z' * 100)
+
+    def test_ledger_lock_errors_and_contention_fall_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.fcntl.flock', side_effect=OSError(errno.ENOLCK, 'No locks available')):
+                append_ledger(root, {'event': 'nolock'})
+            with open(ledger_path(root), 'rb') as holder:
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                append_ledger(root, {'event': 'contended'})
+            events = [json.loads(x)['event'] for x in ledger_path(root).read_text().splitlines()]
+            self.assertEqual(events, ['nolock', 'contended'])
 
     def test_ledger_concurrent_writers_never_interleave(self):
         # Regression guard: tearing was not reproducible on Linux before the fix.

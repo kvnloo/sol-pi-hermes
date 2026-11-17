@@ -261,6 +261,8 @@ def _try_lock(fd: int) -> None:
             return
         except BlockingIOError:
             time.sleep(0.002)
+        except OSError:  # e.g. ENOLCK on NFS: append unlocked rather than lose the record
+            return
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:
