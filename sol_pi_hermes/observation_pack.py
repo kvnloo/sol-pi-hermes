@@ -225,9 +225,13 @@ def placeholder_for(observation: Observation) -> str:
 
 def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
     path = ledger_path(runtime_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **dict(entry)}
-    with path.open("a", encoding="utf-8") as handle:
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    if path.is_symlink():
+        raise OSError("Observation ledger must not be a symlink")
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload) + "\n")
 
 

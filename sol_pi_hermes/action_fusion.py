@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 THEN_RUN_SUCCEEDED = "[then_run:succeeded]"
+THEN_RUN_UNKNOWN = "[then_run:unknown]"
 THEN_RUN_FAILED = "[then_run:failed]"
 THEN_RUN_SKIPPED = "[then_run:skipped]"
 
@@ -68,10 +69,28 @@ def assert_unchanged_before_command(path: Path, mutation_hash: str) -> None:
         raise OSError(f"{THEN_RUN_SKIPPED} target content changed after the fused mutation; the command was not run.")
 
 
+def _reported_failure(result: str) -> str | None:
+    """Hermes tool dispatch reports failures as JSON, not only exceptions."""
+    try:
+        payload = json.loads(result)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("error"):
+        return str(payload["error"])
+    if payload.get("success") is False:
+        return str(payload.get("message") or "Tool reported an unsuccessful result")
+    exit_code = payload.get("exit_code")
+    if type(exit_code) is int and exit_code != 0:
+        return f"Command exited with code {exit_code}"
+    return None
+
+
 def execute_mutation_then_run(
     *,
     mutate: Callable[[], str],
-    absolute_path: Path,
+    absolute_path: Path | None,
     then_run: dict[str, Any] | None,
     run_command: Callable[[str, float | None], str],
 ) -> str:
@@ -89,14 +108,29 @@ def execute_mutation_then_run(
     if not then_run:
         return mutation_result if isinstance(mutation_result, str) else json.dumps({"result": mutation_result})
 
+    failure = _reported_failure(mutation_result)
+    if failure:
+        return json.dumps({"mutation": mutation_result, "then_run": THEN_RUN_SKIPPED, "error": failure})
+
     try:
-        mutation_hash = file_sha256(absolute_path)
-        assert_unchanged_before_command(absolute_path, mutation_hash)
+        # Only callers with a verified host-local target may enable this guard.
+        # Backend paths (even absolute ones) are not necessarily host paths.
+        if absolute_path is not None:
+            mutation_hash = file_sha256(absolute_path)
+            assert_unchanged_before_command(absolute_path, mutation_hash)
         output = run_command(str(then_run.get("command") or ""), then_run.get("timeout"))
+        failure = _reported_failure(output)
+        status = THEN_RUN_FAILED if failure else THEN_RUN_SUCCEEDED
+        try:
+            payload = json.loads(output)
+        except (TypeError, ValueError):
+            payload = None
+        if not failure and not (isinstance(payload, dict) and type(payload.get("exit_code")) is int):
+            status = THEN_RUN_UNKNOWN
         return json.dumps(
             {
                 "mutation": mutation_result,
-                "then_run": THEN_RUN_SUCCEEDED,
+                "then_run": status,
                 "output": output,
             }
         )

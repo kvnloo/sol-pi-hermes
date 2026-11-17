@@ -31,13 +31,17 @@ SoL-Pi's Evidence-Preserving Reducer and Online Context Compact are ported in `e
 
 ## What it touches
 
-- **Writes**: archived tool results under `<hermes home>/sol-pi/<session>/observation-pack/` (directory mode 0700, files 0600), plus a `ledger.jsonl` next to them. Nothing outside the Hermes home.
-- **Reads**: `sol-pi.json` in the Hermes home, and the file it just wrote (to hash it before `then_run`).
-- **Commands**: `then_run` runs the model's command through Hermes' `terminal` tool, so Hermes' approvals apply to it as they do to any terminal call.
+- **Writes**: archived tool results under `<hermes home>/sol-pi/<session>/observation-pack/` (directory mode 0700, new files 0600), plus a newly created 0600 `ledger.jsonl` next to them. Existing archives/ledgers are not permission-migrated; installations upgrading from older versions should inspect their permissions before enabling ObservationPack. Action Fusion additionally writes the requested target through Hermes write_file/patch in the originating task/session backend.
+- **Reads**: `sol-pi.json` in the Hermes home, no host-side reads of Action Fusion target files. PluginContext does not attest backend locality, so the plugin does not hash a host path or promise an atomic edit/check transaction.
+- **Commands**: `then_run` runs the model's command through Hermes' `terminal` tool, with the originating task/session identity. Dangerous-command approval and the write denylist still apply, but nested dispatch currently bypasses ACP/Zed editor edit approval, file checkpoints (`/rollback`), and other plugins' `pre_tool_call` guards. Do not enable Action Fusion where those protections are required. Core PR NousResearch/hermes-agent#138933 addresses the hook portion, not all these protections.
 - **Network**: none.
 - **Credentials**: none.
 
+Action Fusion tools are registered only when `actionFusion` is enabled. Returned mutation failures skip the command; returned command failures are labeled failed. Command results without a completed integer exit code are labeled `then_run:unknown`, not success; no background polling is added. Restart/reload the plugin after changing configuration.
+
 ## Provenance
+
+Failure-result handling and task/session forwarding reuse the focused logic from retained downstream commits `015d10fc` (#4) and `12e03247`, without restoring their older host hooks.
 
 The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 
