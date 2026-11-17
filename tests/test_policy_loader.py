@@ -68,8 +68,12 @@ class SharedPolicyLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             missing = load_sol_pi_config(hermes_home=Path(temp))
         self.assertEqual(missing, load_sol_pi_config(raw={}))
+        self.assertEqual(missing.version, 1)
         self.assertFalse(missing.action_fusion)
         self.assertFalse(missing.observation_pack)
+        self.assertFalse(missing.evidence_preserving_reducer)
+        self.assertFalse(missing.online_context_compact)
+        self.assertEqual(missing.cache_write_read_ratio, 12.5)
 
     def test_present_file_must_declare_version_one(self) -> None:
         for payload in ('{}', '{"actionFusion": true}'):
