@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-import tomllib
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -73,11 +73,16 @@ class RecordingContext:
 class PluginContractTests(unittest.TestCase):
     def test_manifest_entry_point_and_registered_capabilities(self) -> None:
         manifest = manifest_contract()
-        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        self.assertEqual(project["version"], manifest["version"])
+        # Regex, not tomllib: requires-python is >=3.10 and tomllib is 3.11+.
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        version = re.search(r'^version = "([^"]+)"', pyproject, re.M)
+        self.assertEqual(version and version[1], manifest["version"])
 
         # Hermes main discovers installed plugins in the hermes_agent.plugins group.
-        entry_points = project["entry-points"]["hermes_agent.plugins"]
+        section = re.search(r'^\[project\.entry-points\."hermes_agent\.plugins"\]\n((?:[^\[\n].*\n?)*)',
+                            pyproject, re.M)
+        self.assertIsNotNone(section)
+        entry_points = dict(re.findall(r'^([\w.-]+) = "([^"]+)"', section[1], re.M))
         self.assertEqual(set(entry_points), {manifest["name"]})
         module_name, separator, attr = entry_points[manifest["name"]].partition(":")
         self.assertEqual(separator, ":")
