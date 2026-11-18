@@ -16,3 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Unit tests
         run: python3 -m unittest discover -s tests
+      - name: Installed evaluator smoke
+        run: |
+          python3 -m pip install --no-deps --target "$RUNNER_TEMP/sol-pi-installed" .
+          cd "$RUNNER_TEMP"
+          PYTHONPATH="$RUNNER_TEMP/sol-pi-installed" python3 -m sol_pi_hermes.observation_eval --output "$RUNNER_TEMP/sol-pi-shadow-report.json"

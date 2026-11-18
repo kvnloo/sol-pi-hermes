@@ -19,8 +19,7 @@ from typing import Any, Callable, Mapping
 from .observation_pack import FULL_SENDS, estimate_tokens, project_request, recall, utf8_len
 
 DEFAULT_FIXTURES = (
-    Path(__file__).resolve().parent.parent
-    / "tests"
+    Path(__file__).resolve().parent
     / "fixtures"
     / "observation_pack_capture_results.json"
 )

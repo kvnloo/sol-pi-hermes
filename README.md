@@ -82,3 +82,7 @@ The snapshots follow the `CaptureResult` / `_text_capture_payload` contract in
 NousResearch/hermes-agent at `3f5a11f624c8c3c7d0e99ddd8b4b7da97fcb7940`. They are not
 real-device recordings. Real, consented/redacted capture traces and live agent
 equivalence remain separate gates before considering model-visible activation.
+
+The default synthetic shadow-evaluation fixtures ship inside the installed
+`sol_pi_hermes` package. `python -m sol_pi_hermes.observation_eval` therefore runs
+outside a source checkout too; `--fixtures` still accepts an explicit JSON file.

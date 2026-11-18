@@ -51,6 +51,13 @@ class PackagingTests(unittest.TestCase):
                     self.assertNotIn(".ts", stripped)
                     self.assertNotIn("sol-pi/index", stripped)
 
+class EvaluatorPackagingTests(unittest.TestCase):
+    def test_default_fixtures_belong_to_runtime_package(self):
+        from sol_pi_hermes import observation_eval
+        self.assertEqual(observation_eval.DEFAULT_FIXTURES.parent,
+                         Path(observation_eval.__file__).resolve().parent / 'fixtures')
+        self.assertTrue(observation_eval.DEFAULT_FIXTURES.is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
