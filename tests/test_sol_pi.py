@@ -140,6 +140,7 @@ class EprTests(unittest.TestCase):
     def test_quote_verify_fail_open(self) -> None:
         self.assertFalse(quote_verify(["missing"], "log"))
         self.assertTrue(quote_verify(["error: boom"], "error: boom\nrest"))
+        self.assertFalse(quote_verify([], "error: boom\n"))
         for blank in ("", "  ", "\n"):
             self.assertFalse(quote_verify([blank], "error: boom\n"))
             self.assertFalse(quote_verify(["error: boom", blank], "error: boom\n"))
