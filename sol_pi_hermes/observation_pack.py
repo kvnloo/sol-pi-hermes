@@ -357,8 +357,9 @@ def read_recall_chunk(
 
 
 def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
-    if not is_observation_id(obs_id):
-        return json.dumps({"error": f"Unknown observation id: {obs_id}"})
+    if not isinstance(obs_id, str) or not is_observation_id(obs_id):
+        # Never reflect arbitrary caller content into an unbounded tool result.
+        return json.dumps({"error": "Invalid observation id: expected obs_ followed by 24 lowercase hexadecimal characters"})
     path = observation_path(runtime_root, obs_id)
     limits = {
         "max_bytes": RECALL_MAX_BYTES - RECALL_HEADER_RESERVE_BYTES,

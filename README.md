@@ -60,3 +60,9 @@ and `next_offset` still count original UTF-8 content bytes, not JSON escaping;
 continue with `next_offset` until `eof` to recover the complete observation.
 The page selection conservatively halves the content budget when needed rather
 than maximizing each page. This does not claim a model-token or billing limit.
+
+Malformed recall IDs return a fixed, bounded format error rather than echoing
+arbitrarily large caller input into the tool response. Non-string IDs are also
+refused before path construction; valid but unknown IDs retain their short
+identifier in the diagnostic. This bounds this admission-error path, not all
+possible host-generated errors or the size of incoming tool arguments.
