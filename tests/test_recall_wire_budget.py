@@ -38,4 +38,4 @@ class RecallWireBudgetTests(unittest.TestCase):
             self.assertEqual(len(recs),1)
             r=recs[0]
             self.assertEqual((r['bytes'],r['nextOffset'],r['eof'],r['lines']),(page['bytes'],page['next_offset'],page['eof'],page['lines']))
-            self.assertLess(page['bytes'],20000)
+            self.assertLess(page["bytes"],RECALL_MAX_BYTES//2)
