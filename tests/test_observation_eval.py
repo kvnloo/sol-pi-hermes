@@ -154,6 +154,27 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("app", json.loads(out.getvalue())["totals"]["lost_fields_after_recall"])
         self.assertEqual(exit_code, 1)
 
+    def test_cli_fails_when_projection_packs_before_full_sends(self):
+        from unittest import mock
+        from sol_pi_hermes import observation_eval
+
+        real = observation_eval.project_request
+
+        def premature(request, root, counts):
+            # Simulate premature count advancement without damaging the archive
+            # or mutating the original request.
+            for _ in range(observation_eval.FULL_SENDS):
+                real(request, root, counts)
+            return real(request, root, counts)
+
+        with mock.patch.object(observation_eval, "project_request", premature), redirect_stdout(StringIO()) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        cases = json.loads(out.getvalue())["cases"]
+        self.assertTrue(any(c["sends"][0]["packed"] for c in cases))
+        self.assertTrue(all(c["control_unchanged"] for c in cases))
+        self.assertTrue(all(s["byte_exact_recall"] is not False for c in cases for s in c["sends"]))
+        self.assertEqual(exit_code, 1)
+
     def test_cli_fails_when_projection_mutates_the_control(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval

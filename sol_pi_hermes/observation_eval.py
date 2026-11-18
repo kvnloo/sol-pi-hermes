@@ -256,6 +256,11 @@ def main(argv: list[str] | None = None) -> int:
     return int(
         bool(report["totals"]["lost_fields_after_recall"])
         or any(not case["control_unchanged"] for case in report["cases"])
+        or any(
+            send["packed"] and send["send"] <= FULL_SENDS
+            for case in report["cases"]
+            for send in case["sends"]
+        )
         or any(send["byte_exact_recall"] is False for case in report["cases"] for send in case["sends"])
     )
 
