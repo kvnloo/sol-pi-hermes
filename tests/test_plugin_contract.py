@@ -86,11 +86,10 @@ class PluginContractTests(unittest.TestCase):
         self.assertIsNotNone(section)
         entry_points = dict(re.findall(r'^([\w.-]+) = "([^"]+)"', section[1], re.M))
         self.assertEqual(set(entry_points), {manifest["name"]})
-        module_name, separator, attr = entry_points[manifest["name"]].partition(":")
-        self.assertEqual(separator, ":")
-        self.assertTrue(module_name)
-        self.assertTrue(attr)
-        entry_register = getattr(importlib.import_module(module_name), attr)
+        # Use the module target shared with the installed-discovery draft.
+        # Hermes resolves its register attribute; a module is not itself callable.
+        self.assertEqual(entry_points[manifest["name"]], "sol_pi_hermes")
+        entry_register = importlib.import_module(entry_points[manifest["name"]]).register
         self.assertIs(entry_register, implementation_register)
 
         advertised = set(manifest["provides_tools"])

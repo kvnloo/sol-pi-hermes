@@ -71,10 +71,13 @@ class PackagingTests(unittest.TestCase):
                  "from importlib.metadata import distributions;"
                  "eps = [e for d in distributions(path=[sys.argv[1]]) for e in d.entry_points"
                  " if e.group == 'hermes_agent.plugins'];"
-                 "assert [(e.name, e.value) for e in eps] == [('sol-pi', 'sol_pi_hermes:register')], eps;"
+                 "assert [(e.name, e.value) for e in eps] == [('sol-pi', 'sol_pi_hermes')], eps;"
                  "import sol_pi_hermes; assert sol_pi_hermes.__file__.startswith(sys.argv[1]);"
-                 "assert callable(eps[0].load()); print('ok')", str(target)],
+                 "loaded = eps[0].load();"
+                 "from sol_pi_hermes.plugin import register;"
+                 "assert loaded.register is register and callable(loaded.register); print('ok')", str(target)],
                 capture_output=True, text=True, timeout=60, cwd=tmp)
+        self.assertEqual(found.returncode, 0, found.stdout + found.stderr)
         self.assertEqual(found.stdout.strip(), "ok", found.stderr)
 
 
