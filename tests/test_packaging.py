@@ -55,8 +55,11 @@ class PackagingTests(unittest.TestCase):
                     self.assertNotIn(".ts", stripped)
                     self.assertNotIn("sol-pi/index", stripped)
 
-    @unittest.skipUnless(shutil.which("hermes"), "hermes CLI not installed")
     def test_real_hermes_plugins_validate_passes(self) -> None:
+        if not shutil.which("hermes"):
+            if os.environ.get("SOL_PI_REQUIRE_HERMES") == "1":
+                self.fail("hermes CLI is required by SOL_PI_REQUIRE_HERMES=1")
+            self.skipTest("hermes CLI not installed")
         with tempfile.TemporaryDirectory() as home:
             run = subprocess.run(
                 ["hermes", "plugins", "validate", str(ROOT)],

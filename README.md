@@ -50,3 +50,13 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Pinned Hermes validation
+
+CI keeps the dependency-free unit job and a separate host-validation job. The
+latter installs Hermes at `09ded63c4fedcc8fe975d37f9765797d904fc75d` using its frozen
+`uv.lock` on Python 3.14.10, then runs the suite with `SOL_PI_REQUIRE_HERMES=1`.
+That flag makes a missing `hermes` executable fail instead of silently skipping
+the real `hermes plugins validate` test. Locally, the test still skips when Hermes
+is absent unless the flag is set. Validation uses a temporary `HERMES_HOME`; it
+does not run a model, test a device, or establish runtime behavior of fused actions.

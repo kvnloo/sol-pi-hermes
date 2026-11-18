@@ -16,3 +16,34 @@ jobs:
       - uses: actions/checkout@v4
       - name: Unit tests
         run: python3 -m unittest discover -s tests
+
+  hermes-host-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Check out the pinned Hermes host
+        uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 09ded63c4fedcc8fe975d37f9765797d904fc75d
+          path: hermes-host
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.6"
+          python-version: "3.14.10"
+      - name: Install host from its frozen dependency lock
+        run: |
+          test "$(git -C hermes-host rev-parse HEAD)" = 09ded63c4fedcc8fe975d37f9765797d904fc75d
+          uv sync --project hermes-host --frozen --no-dev
+          echo "$GITHUB_WORKSPACE/hermes-host/.venv/bin" >> "$GITHUB_PATH"
+      - name: Require real installed-host validation
+        working-directory: plugin
+        env:
+          SOL_PI_REQUIRE_HERMES: "1"
+        run: |
+          command -v hermes
+          "$GITHUB_WORKSPACE/hermes-host/.venv/bin/python" -m unittest discover -s tests
