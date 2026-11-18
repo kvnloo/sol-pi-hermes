@@ -220,6 +220,8 @@ def evaluate_recordings(
 ) -> dict[str, Any]:
     if recordings.get("schema_version") != 1 or not isinstance(recordings.get("cases"), list):
         raise ValueError("expected schema_version=1 and cases array")
+    if not recordings["cases"]:
+        raise ValueError("cases must contain at least one fixture")
     cases = [evaluate_fixture(case, clock=clock) for case in recordings["cases"]]
     names = [case["name"] for case in cases]
     if len(set(names)) != len(names):

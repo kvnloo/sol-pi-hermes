@@ -111,6 +111,26 @@ class ObservationShadowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_fixture(malformed, clock=_deterministic_clock())
 
+    def test_cli_rejects_empty_replay_without_writing_success_report(self):
+        import subprocess
+        import sys
+
+        fixtures = _fixture_set()
+        fixtures["cases"] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture_path = Path(tmp) / "empty.json"
+            report_path = Path(tmp) / "report.json"
+            fixture_path.write_text(json.dumps(fixtures), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-m", "sol_pi_hermes.observation_eval",
+                 "--fixtures", str(fixture_path), "--output", str(report_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("cases must contain at least one fixture", result.stderr)
+            self.assertFalse(report_path.exists())
+
     def test_cli_emits_machine_readable_report_without_an_agent(self):
         with tempfile.TemporaryDirectory() as tmp:
             report_path = Path(tmp) / "report.json"

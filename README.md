@@ -65,6 +65,8 @@ The evaluator replays frozen, **synthetic** `CaptureResult`-shaped fixtures alon
 Hermes model-visible text JSON or multimodal capture blocks, using the existing
 `project_request` and `obs_recall` implementation. It **does not** replace any
 capture, send a provider request, issue computer-use actions, or enable a policy.
+A custom `--fixtures` input must contain at least one case; empty replays fail
+without emitting a success report.
 The first two full sends remain control observations; later sends are projected
 only when the current ObservationPack middleware supports their content type.
 
