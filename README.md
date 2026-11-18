@@ -50,3 +50,13 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Recall response budget
+
+Successful `obs_recall` responses fit the 16 KiB limit as serialized UTF-8 JSON,
+including its envelope and escaped content. Unicode, control characters, quotes
+and backslashes can require smaller pages than plain text. The returned `bytes`
+and `next_offset` still count original UTF-8 content bytes, not JSON escaping;
+continue with `next_offset` until `eof` to recover the complete observation.
+The page selection conservatively halves the content budget when needed rather
+than maximizing each page. This does not claim a model-token or billing limit.
