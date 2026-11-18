@@ -397,6 +397,17 @@ class ObservationShadowTests(unittest.TestCase):
         # Hand-computed UTF-8 length of [{"text": "café", "type": "text"}] (no \u escapes).
         self.assertEqual(send["before_bytes"], 35)
 
+    def test_control_text_joins_blocks_with_newline_and_treats_missing_text_as_empty(self):
+        fixture = copy.deepcopy(next(c for c in _fixture_set()["cases"] if c["name"] == "multimodal"))
+        for blocks, expected in (
+            (["ab", {"type": "text", "text": "cd"}], 2),  # "ab\ncd" is 5 chars; "abcd" would be 1
+            ([{"type": "text"}], 0),  # absent text contributes "", not a placeholder
+        ):
+            with self.subTest(blocks=blocks):
+                fixture["control"]["content_blocks"] = blocks
+                send = evaluate_fixture(fixture, clock=_deterministic_clock())["sends"][0]
+                self.assertEqual(send["before_estimated_text_tokens"], expected)
+
     def test_control_indices_and_visible_element_tokens_are_reported(self):
         fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "stale"))
         token = fixture["capture"]["elements"][0]["element_token"]
