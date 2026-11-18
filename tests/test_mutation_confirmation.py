@@ -17,6 +17,18 @@ class MutationConfirmationTests(unittest.TestCase):
                 self.assertEqual(result['then_run'], '[then_run:skipped]')
                 self.assertEqual(result['mutation'], raw)
 
+    def test_mutate_exception_never_runs_followup_and_stays_json(self):
+        def boom():
+            raise OSError('disk full')
+        for then_run in ({'command':'not-executed'}, None):
+            with self.subTest(then_run=then_run):
+                calls = []
+                result = json.loads(execute_mutation_then_run(mutate=boom, absolute_path=None,
+                    then_run=then_run, run_command=lambda *args:calls.append(args) or '{"exit_code":0}'))
+                self.assertEqual(calls, [])
+                self.assertIn('disk full', result['error'])
+                self.assertEqual('then_run' in result or '[then_run:skipped]' in result['error'], then_run is not None)
+
     def test_confirmed_success_and_nochange_allow_followup(self):
         for payload in ({'success':True}, {'success':True,'no_change':True}, {'bytes_written':0}, {'bytes_written':23,'verified':True}):
             calls = []
