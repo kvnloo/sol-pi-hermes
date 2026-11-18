@@ -50,3 +50,10 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+ObservationPack send accounting advances once per observation ID per projected
+provider request, even when that ID appears repeatedly in the message list.
+Duplicate appearances use the same prior count and packing decision; distinct
+call IDs keep independent counts. This does not change the existing cold-history
+assistant-turn estimate, or turn projection into an acknowledgement that a
+provider actually received a request. Ledger records remain per appearance.

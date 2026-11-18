@@ -273,6 +273,9 @@ def project_messages(
     prior = _prior_assistant_counts(source)
     request_index = (prior[0] + 1) if prior else 1
     projected = list(source)
+    # Duplicate appearances share one provider request, not separate sends.
+    # Retain the initial count even after earlier occurrences update counts.
+    request_previous_sends: dict[str, int] = {}
 
     for index, message in enumerate(source):
         if not is_pure_text_tool_result(message):
@@ -283,7 +286,9 @@ def project_messages(
                 continue
             ensure_stored(observation)
             send_key = f"{runtime_root}\0{observation.id}"
-            previous_sends = counts.get(send_key, prior[index])
+            previous_sends = request_previous_sends.setdefault(
+                send_key, counts.get(send_key, prior[index])
+            )
             if previous_sends < FULL_SENDS:
                 append_ledger(
                     runtime_root,
