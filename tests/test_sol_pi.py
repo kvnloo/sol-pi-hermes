@@ -160,6 +160,15 @@ class EprTests(unittest.TestCase):
                     reducer=lambda bad=bad, **_: {"quotes": [bad], "notes": "coerced"},
                 )
             )
+        for bad in (None, 5):
+            self.assertIsNone(
+                transform_if_reduced(
+                    tool_name="terminal",
+                    args={"command": "cargo test"},
+                    result=f"error: boom {bad}\n" * 500,
+                    reducer=lambda bad=bad, **_: {"quotes": ["error: boom", bad], "notes": "mixed"},
+                )
+            )
         self.assertIsNone(
             transform_if_reduced(
                 tool_name="terminal",
