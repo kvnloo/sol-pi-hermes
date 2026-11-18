@@ -377,18 +377,21 @@ def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
     content = f"{header}\n{chunk['text']}"
     if utf8_len(content) > RECALL_MAX_BYTES or count_lines(content) > RECALL_MAX_LINES:
         return json.dumps({"error": "Recall output exceeded its hard limit"})
-    append_ledger(
-        runtime_root,
-        {
-            "event": "recall",
-            "id": obs_id,
-            "offset": offset,
-            "bytes": chunk["bytes"],
-            "lines": chunk["lines"],
-            "nextOffset": chunk["nextOffset"],
-            "eof": chunk["eof"],
-        },
-    )
+    try:  # The ledger is accounting only; never fail a successful recall on it.
+        append_ledger(
+            runtime_root,
+            {
+                "event": "recall",
+                "id": obs_id,
+                "offset": offset,
+                "bytes": chunk["bytes"],
+                "lines": chunk["lines"],
+                "nextOffset": chunk["nextOffset"],
+                "eof": chunk["eof"],
+            },
+        )
+    except OSError:
+        pass
     return json.dumps(
         {
             "id": obs_id,
