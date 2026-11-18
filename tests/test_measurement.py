@@ -17,7 +17,7 @@ class MeasurementTests(unittest.TestCase):
                 source = fixtures()[name]
                 original = copy.deepcopy(source)
                 result = measure(source)
-        self.assertEqual(result['counter'], 'ceil_unicode_chars_div_4_estimate')
+                self.assertEqual(result['counter'], 'ceil_unicode_chars_div_4_estimate')
                 self.assertEqual(source, original)
                 self.assertTrue(result['transcript_unchanged'])
                 self.assertTrue(result['recall_roundtrip'])
