@@ -72,3 +72,23 @@ class ArchiveDescriptorTests(unittest.TestCase):
         self.assertEqual(len(opened), 1)
         with self.assertRaises(OSError):
             os.fstat(opened[0])
+
+    @unittest.skipUnless(hasattr(os, 'O_NONBLOCK'), 'requires nonblocking file open')
+    def test_read_is_bounded_when_inode_grows_after_fstat(self):
+        original_fstat, original_fdopen, sizes = os.fstat, os.fdopen, []
+        def grow(fd):
+            result = original_fstat(fd)
+            with open(self.obs.file_path, 'ab') as handle:
+                handle.write(b'a' * 100000)
+            return result
+        class Spy:
+            def __init__(self, stream): self.stream = stream
+            def __enter__(self): return self
+            def __exit__(self, *exc): return self.stream.__exit__(*exc)
+            def read(self, size=-1):
+                sizes.append(size)
+                return self.stream.read(size)
+        with patch('os.fstat', side_effect=grow), patch('os.fdopen', side_effect=lambda *a, **k: Spy(original_fdopen(*a, **k))):
+            with self.assertRaises(OSError):
+                ensure_stored(self.obs)
+        self.assertEqual(sizes, [self.obs.bytes + 1])
