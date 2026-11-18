@@ -55,7 +55,10 @@ PYTHONPATH=. python -m unittest discover -s tests
 
 ObservationPack preserves explicit failed JSON tool-result envelopes in full,
 including a nonempty top-level `error`, `success: false`, or a nonzero integer
-`exit_code`. Hermes may put these fields inside content without a message-level
+`exit_code`. The explicit top-level ActionFusion `then_run: "[then_run:failed]"`
+status is also preserved, because its command diagnostics live inside `output`.
+Successful or unknown fused-command statuses remain eligible for packing. Hermes
+may put these fields inside content without a message-level
 `isError` flag. These results are not archived, counted or replaced by a
 placeholder. Successful/unstructured output remains eligible; nested data fields
 are not interpreted as failure signals. Wrapped or non-JSON error prose is not

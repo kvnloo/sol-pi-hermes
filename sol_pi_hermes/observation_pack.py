@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from .action_fusion import THEN_RUN_FAILED
+
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
 PLACEHOLDER_EXCERPT_BYTES = 1024
@@ -147,6 +149,7 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     if isinstance(payload, dict) and (
         payload.get("error")
         or payload.get("success") is False
+        or payload.get("then_run") == THEN_RUN_FAILED
         or (type(payload.get("exit_code")) is int and payload["exit_code"] != 0)
     ):
         return None
