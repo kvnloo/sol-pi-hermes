@@ -36,6 +36,14 @@ class ConfigPathTests(unittest.TestCase):
             self.assertTrue(cfg.observation_pack)
             self.assertFalse(cfg.action_fusion)
 
+    def test_project_config_that_is_a_directory_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, cwd = Path(tmp) / "home", Path(tmp) / "proj"
+            glob = _write(home, json.dumps({"version": 1, "actionFusion": True}))
+            (cwd / ".hermes" / "sol-pi.json").mkdir(parents=True)
+            self.assertEqual(find_config_path(cwd, home), glob)
+            self.assertTrue(load_sol_pi_config(cwd, home).action_fusion)
+
     def test_unreadable_json_is_a_named_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
