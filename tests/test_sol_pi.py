@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,6 +72,34 @@ class ObservationPackTests(unittest.TestCase):
             self.assertIn("[large tool result replaced", third[1]["content"])
             self.assertEqual(history[1]["content"], body)
             self.assertNotIn("[large tool result replaced", second[1]["content"])
+
+    def _excerpts(self, body: str) -> tuple[str, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            sent = {}
+            msgs = [_big_tool(body)]
+            for _ in range(FULL_SENDS + 1):
+                out = project_messages(msgs, Path(tmp), sent)
+        match = re.search(
+            r"\[first complete lines[^\n]*\n(.*)\n\[middle omitted[^\n]*\n(.*)\n\[\d+ original bytes omitted\]$",
+            out[0]["content"],
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        return match.group(1), match.group(2)
+
+    def test_placeholder_excerpt_budget_is_inclusive(self) -> None:
+        rows = [f"rw-{i:04d}\n" for i in range(1400)]  # 8 bytes each, >THRESHOLD_BYTES
+        head, tail = self._excerpts("".join(rows))
+        self.assertEqual(head, "".join(rows[:64]))  # exactly 512 bytes fits
+        self.assertEqual(tail, "".join(rows[-64:]))  # original order, not reversed
+
+    def test_placeholder_excerpt_stops_at_first_oversized_line(self) -> None:
+        wide = "\u00e9" * 200 + "\n"  # 200 chars, 401 bytes: two exceed 512 bytes
+        filler = "x" * 100 + "\n"
+        body = wide * 2 + "head-skip\n" + filler * 110 + "tail-skip\n" + wide * 2
+        head, tail = self._excerpts(body)
+        self.assertEqual(head, wide)
+        self.assertEqual(tail, wide)
 
     def test_reducer_receipt_is_not_packed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
