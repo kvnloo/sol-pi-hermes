@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -234,11 +235,16 @@ def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **dict(entry)}
     record = (json.dumps(payload) + "\n").encode("utf-8")
-    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    if not hasattr(os, "O_NONBLOCK"):
+        # Optional telemetry must not risk a blocking special-file open.
+        return
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
     if path.is_symlink():
         raise OSError("Observation ledger must not be a symlink")
     fd = os.open(path, flags, 0o600)
     try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("Observation ledger must be a regular file")
         if not _try_lock(fd):
             # Telemetry is optional; unlocked short writes can corrupt other records.
             return

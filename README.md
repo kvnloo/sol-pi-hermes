@@ -60,3 +60,10 @@ appended unsafely. Projection and recall remain available; the ledger is not
 a complete audit log. Successful cooperating writers hold the lock across
 torn-tail recovery and all short writes. Non-cooperating writers are not
 protected. Filesystem I/O itself is not time-bounded.
+
+Ledger appends open nonblocking and verify that the opened descriptor is a
+regular file before acquiring a lock or writing. Existing or substituted FIFOs
+and other nonregular descriptors are rejected and closed. Platforms without
+nonblocking-open support skip optional ledger telemetry without opening a file.
+This is not a hostile-parent-directory sandbox or a filesystem I/O deadline;
+normal regular-file locking, torn-tail repair and short-write handling remain.
