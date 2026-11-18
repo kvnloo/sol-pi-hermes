@@ -62,3 +62,10 @@ fails open and retains the full tool result. Normal failures remove temporary
 files; process termination can leave unpublished `.observation-*` files. This
 provides atomic visibility, not an fsync/power-loss durability guarantee. Ledger
 behavior and pre-existing archive permissions are unchanged.
+
+An already-published object is fully checked for regular-file type, expected size
+and content hash, then reused without creating or writing a temporary file.
+This avoids unnecessary duplicate writes and allows reuse when temporary-file
+creation fails. New objects still require atomic publication; corrupt existing
+objects are rejected rather than overwritten. Ledger I/O remains separate, so
+this does not promise that packing works on a wholly unwritable filesystem.

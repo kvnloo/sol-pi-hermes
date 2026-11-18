@@ -114,3 +114,32 @@ class ObjectPersistenceTests(unittest.TestCase):
             ensure_stored(self.observation)
         self.assertEqual(target.read_text(), self.message['content'])
         self.assertTrue(self.observation.file_path.is_symlink())
+
+    def test_existing_valid_archive_does_not_need_temporary_write(self):
+        ensure_stored(self.observation)
+        with patch('sol_pi_hermes.observation_pack.tempfile.mkstemp', side_effect=OSError('simulated full device')):
+            ensure_stored(self.observation)
+            source=[self.message, {'role':'assistant'}, {'role':'assistant'}]
+            projected=project_messages(source,self.root,{})
+        self.assertNotEqual(projected[0]['content'],self.message['content'])
+        self.assertEqual(self.observation.file_path.read_text(),self.message['content'])
+
+    def test_existing_corruption_is_rejected_without_temporary_write(self):
+        ensure_stored(self.observation)
+        self.observation.file_path.write_text('x'*self.observation.bytes)
+        with patch('sol_pi_hermes.observation_pack.tempfile.mkstemp', side_effect=AssertionError('unexpected new write')):
+            with self.assertRaisesRegex(OSError,'hash mismatch'):
+                ensure_stored(self.observation)
+
+    def test_concurrent_publish_still_validates_existing_content(self):
+        for valid in (True,False):
+            with self.subTest(valid=valid):
+                self.observation.file_path.unlink(missing_ok=True)
+                def competing_publish(*args,**kwargs):
+                    self.observation.file_path.write_text(self.message['content'] if valid else 'x'*self.observation.bytes)
+                    raise FileExistsError('competing publisher')
+                with patch('sol_pi_hermes.observation_pack.os.link',side_effect=competing_publish):
+                    if valid:ensure_stored(self.observation)
+                    else:
+                        with self.assertRaisesRegex(OSError,'hash mismatch'):ensure_stored(self.observation)
+                self.assertEqual(list(self.observation.file_path.parent.iterdir()),[self.observation.file_path])

@@ -158,11 +158,26 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     )
 
 
+def _validate_stored(observation: Observation) -> None:
+    if not observation.file_path.is_file() or observation.file_path.is_symlink():
+        raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
+    existing = observation.file_path.read_bytes()
+    if len(existing) != observation.bytes:
+        raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+    if hash_text(existing) != observation.content_hash:
+        raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+
+
 def ensure_stored(observation: Observation) -> None:
     directory = observation.file_path.parent
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     if directory.is_symlink() or not directory.is_dir():
         raise OSError(f"Observation directory is not a regular directory for {observation.id}")
+    # A previously published object needs verification, not another write.
+    # Keep the same validator for a concurrent publisher's EEXIST result.
+    if observation.file_path.exists():
+        _validate_stored(observation)
+        return
     # Publish only complete objects. A short write or interrupted writer must
     # never expose a truncated archive to projection or a concurrent reader.
     fd, temporary_name = tempfile.mkstemp(prefix=".observation-", dir=directory)
@@ -182,13 +197,7 @@ def ensure_stored(observation: Observation) -> None:
             # existing object (including one published by a concurrent writer).
             os.link(temporary, observation.file_path)
         except FileExistsError:
-            if not observation.file_path.is_file() or observation.file_path.is_symlink():
-                raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
-            existing = observation.file_path.read_bytes()
-            if len(existing) != observation.bytes:
-                raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
-            if hash_text(existing) != observation.content_hash:
-                raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+            _validate_stored(observation)
     finally:
         temporary.unlink(missing_ok=True)
 
