@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -73,9 +74,17 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
         return str(ctx.dispatch_tool("terminal", payload, **context))
 
     def sol_pi_write(args: dict, **kwargs: Any) -> str:
-        path = Path(str(args.get("path") or ""))
+        # Plugin schemas are not runtime argument validation in Hermes. Never
+        # coerce absent/invalid content into an intentional empty-file write.
+        if not isinstance(args, dict):
+            return json.dumps({"error": "sol_pi_write requires an argument object; no mutation was attempted."})
+        if not isinstance(args.get("path"), str) or not args["path"]:
+            return json.dumps({"error": "sol_pi_write requires a nonempty string path; no mutation was attempted."})
+        if not isinstance(args.get("content"), str):
+            return json.dumps({"error": "sol_pi_write requires string content (empty string is allowed); no mutation was attempted."})
+        path = Path(args["path"])
         context = _tool_context(kwargs)
-        content = str(args.get("content") or "")
+        content = args["content"]
 
         def mutate() -> str:
             return str(ctx.dispatch_tool("write_file", {"path": str(path), "content": content}, **context))

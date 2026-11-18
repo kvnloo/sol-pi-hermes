@@ -60,3 +60,10 @@ these fields. Missing, malformed, pending or unknown results skip the command
 and preserve the mutation response for inspection. The mutation may already
 have happened; a skipped follow-up is not a rollback. Calls without `then_run`
 still return the original mutation result unchanged.
+
+`sol_pi_write` validates its required inputs before any nested dispatch: `path`
+must be a nonempty string and `content` must be a string. Missing/null/boolean or
+structured content is rejected, never coerced into an empty-file write. An
+explicit empty string remains a valid deliberate write. Hermes advertises plugin
+schemas but does not apply its built-in required-argument checks to plugins, so
+this boundary is enforced by the plugin itself.
