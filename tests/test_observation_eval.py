@@ -209,6 +209,23 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("app", json.loads(out.getvalue())["totals"]["lost_fields_after_recall"])
         self.assertEqual(exit_code, 1)
 
+    def test_control_with_neither_payload_form_is_a_named_error(self):
+        # Distinct from the top-level required keys: control present but empty.
+        fixture = copy.deepcopy(_fixture_set()["cases"][0])
+        fixture["control"] = {}
+        with self.assertRaisesRegex(ValueError, "exactly one of text_payload or content_blocks"):
+            evaluate_fixture(fixture, clock=_deterministic_clock())
+
+    def test_report_names_the_observation_id_only_for_packed_sends(self):
+        fixture = next(f for f in _fixture_set()["cases"] if f["name"] == "large_tree")
+        sends = evaluate_fixture(fixture, clock=_deterministic_clock())["sends"]
+        for send in sends:
+            if send["packed"]:
+                self.assertRegex(send["observation_id"], r"^obs_[a-f0-9]{24}$")
+            else:
+                self.assertIsNone(send["observation_id"])
+        self.assertTrue(any(send["packed"] for send in sends))
+
     def test_changed_capture_without_observation_id_is_a_named_error(self):
         fixture = next(f for f in _fixture_set()["cases"] if f["name"] == "large_tree")
 
