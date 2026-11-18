@@ -50,3 +50,9 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+The standalone `~/.hermes` fallback applies only when `hermes_constants` itself
+is unavailable. A present host with a missing resolver, broken dependency or
+failing profile resolver now fails registration rather than silently loading a
+default-profile policy or choosing its archive location. Operators must repair
+the host/profile failure before retrying; no alternate profile is inferred.
