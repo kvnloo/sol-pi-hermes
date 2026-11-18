@@ -144,6 +144,47 @@ class PluginContractTests(unittest.TestCase):
                     implementation_register(ctx)
                 self.assertEqual(set(ctx.tools), expected)
 
+    def test_handlers_forward_exact_payloads_and_scope(self) -> None:
+        class Dispatching(RecordingContext):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls: list[tuple] = []
+
+            def dispatch_tool(self, name, payload, **scope):
+                self.calls.append((name, payload, scope))
+                return json.dumps({"exit_code": 0} if name == "terminal" else {"success": True})
+
+        ctx = Dispatching()
+        implementation_register(ctx, SolPiConfig(action_fusion=True))
+        scope = {"task_id": "t", "session_id": "s", "cwd": "/x"}
+        ctx.tools["sol_pi_write"][1](
+            {"path": "a.txt", "content": "hi", "then_run": {"command": "ls", "timeout": 3}}, **scope)
+        ctx.tools["sol_pi_patch"][1](
+            {"path": "a.txt", "old_string": "a", "new_string": "b", "then_run": {"command": "ls"}}, **scope)
+        keep = {"task_id": "t", "session_id": "s"}
+        self.assertEqual(ctx.calls, [
+            ("write_file", {"path": "a.txt", "content": "hi"}, keep),
+            ("terminal", {"command": "ls", "timeout": 3}, keep),
+            ("patch", {"path": "a.txt", "old_string": "a", "new_string": "b"}, keep),
+            ("terminal", {"command": "ls"}, keep),
+        ])
+
+    def test_obs_recall_handler_passes_id_offset_and_session_scope(self) -> None:
+        ctx = RecordingContext()
+        implementation_register(ctx, SolPiConfig())
+        handler = ctx.tools["obs_recall"][1]
+        roots: list[str] = []
+        with (
+            patch("sol_pi_hermes.plugin.runtime_root_for_session",
+                  side_effect=lambda sid: roots.append(sid) or ROOT),
+            patch("sol_pi_hermes.plugin.recall", return_value="out") as recall,
+        ):
+            self.assertEqual(handler({"id": "obs1", "offset": 7}, session_id="s", task_id="t"), "out")
+            recall.assert_called_with(ROOT, "obs1", 7)
+            handler({"id": "obs2"}, task_id="only-task")
+            recall.assert_called_with(ROOT, "obs2", 0)
+        self.assertEqual(roots, ["s", "only-task"])
+
     def test_observation_pack_flag_gates_projection_not_middleware_registration(self) -> None:
         disabled = RecordingContext()
         enabled = RecordingContext()
