@@ -158,6 +158,15 @@ class OccSettledRecordedTests(unittest.TestCase):
         gate.on_plan_boundary()
         self.assertTrue(gate.should_compact())
 
+    def test_boundary_only_reports_waiting_until_first_settle(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        gate.last_reason = ""
+        gate.on_plan_boundary()
+        self.assertEqual(gate.last_reason, "waiting_for_agent_settled")
+        gate.on_agent_settled()
+        gate.on_plan_boundary()
+        self.assertNotEqual(gate.last_reason, "waiting_for_agent_settled")
+
 
 class EprTests(unittest.TestCase):
     def test_secrets_are_not_reduced(self) -> None:
