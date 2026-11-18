@@ -25,6 +25,23 @@ class MutationConfirmationTests(unittest.TestCase):
             self.assertEqual(len(calls), 1)
             self.assertEqual(result['then_run'], '[then_run:succeeded]')
 
+    def test_non_true_success_field_is_not_rescued_by_bytes_written(self):
+        for raw in ('{"success":null,"bytes_written":12}', '{"success":1,"bytes_written":12}',
+                    '{"success":"true","bytes_written":12}'):
+            with self.subTest(raw=raw):
+                calls = []
+                result = json.loads(execute_mutation_then_run(mutate=lambda:raw, absolute_path=None,
+                    then_run={'command':'never'}, run_command=lambda *a:calls.append(a) or '{"exit_code":0}'))
+                self.assertEqual(calls, [])
+                self.assertEqual(result['then_run'], '[then_run:skipped]')
+
+    def test_nonzero_exit_code_overrides_success(self):
+        calls = []
+        result = json.loads(execute_mutation_then_run(mutate=lambda:'{"success":true,"exit_code":1}', absolute_path=None,
+            then_run={'command':'never'}, run_command=lambda *a:calls.append(a) or '{}'))
+        self.assertEqual(calls, [])
+        self.assertEqual(result['then_run'], '[then_run:skipped]')
+
     def test_reported_error_overrides_success(self):
         result = json.loads(execute_mutation_then_run(mutate=lambda:'{"success":true,"error":"denied"}', absolute_path=None,
             then_run={'command':'never'}, run_command=lambda *_:self.fail('unexpected command')))
