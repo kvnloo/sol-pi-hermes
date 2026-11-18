@@ -137,3 +137,41 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
         self.assertIn('cannot load requested tokenizer', err.getvalue())
         self.assertEqual(out.getvalue(), '')
+
+    def test_cli_rejects_non_positive_requests_before_measuring(self):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, 'argv', ['x', '--requests', '0']), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn('--requests must be positive', err.getvalue())
+        self.assertEqual(out.getvalue(), '')
+
+    def test_recall_error_and_stalled_pagination_are_rejected(self):
+        real = observation_pack.recall
+        def error(root, observation_id, *rest):
+            return real(root, 'obs_missing', *rest)
+        calls = []
+        def stalled(*a):
+            calls.append(a)
+            page = json.loads(real(*a))
+            if len(calls) > 3:  # bounded: a missing guard fails instead of hanging
+                return json.dumps(page)
+            return json.dumps({**page, 'eof': False, 'next_offset': a[2]})
+        for name, fake, message in (('error', error, 'Unknown observation id'), ('stalled', stalled, 'no progress')):
+            with self.subTest(name=name), mock.patch.object(observation_pack, 'recall', fake):
+                with self.assertRaisesRegex(AssertionError, message):
+                    measure(fixtures()['large_ascii'])
+
+    def test_named_tokenizer_does_not_reject_special_token_text(self):
+        fake = mock.Mock()
+        fake.get_encoding.return_value.encode.return_value = [0]
+        with mock.patch.dict(sys.modules, {'tiktoken': fake}), \
+                mock.patch.object(sys, 'argv', ['x', '--encoding', 'cl100k_base', '--requests', '1']), \
+                contextlib.redirect_stdout(io.StringIO()):
+            main()
+        calls = fake.get_encoding.return_value.encode.call_args_list
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertEqual(call.kwargs, {'disallowed_special': ()})
