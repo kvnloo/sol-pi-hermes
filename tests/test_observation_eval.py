@@ -122,6 +122,8 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertEqual(totals["after_bytes"], sum(r["after_bytes"] for r in rows))
         self.assertLess(totals["after_bytes"], totals["before_bytes"])
         self.assertEqual(totals["projection_latency_ns"], sum(r["latency_ns"] for r in rows))
+        self.assertEqual(totals["saved_estimated_text_tokens"],
+                         sum(r["saved_estimated_text_tokens"] for r in rows))
         self.assertGreater(totals["projection_latency_ns"], 0)
 
     def test_nonempty_non_list_cases_rejected_as_malformed_schema(self):
