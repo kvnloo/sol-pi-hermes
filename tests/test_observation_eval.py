@@ -138,6 +138,38 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(any(s["byte_exact_recall"] is False for c in report["cases"] for s in c["sends"]))
         self.assertEqual(exit_code, 1)
 
+    def test_cli_fails_when_recall_loses_a_field(self):
+        from unittest import mock
+        from sol_pi_hermes import observation_eval
+
+        real = observation_eval.recall
+
+        def renamed(*args):
+            page = json.loads(real(*args))
+            page["content"] = page["content"].replace('"app"', '"zpp"', 1)
+            return json.dumps(page)
+
+        with mock.patch.object(observation_eval, "recall", renamed), redirect_stdout(StringIO()) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        self.assertIn("app", json.loads(out.getvalue())["totals"]["lost_fields_after_recall"])
+        self.assertEqual(exit_code, 1)
+
+    def test_cli_fails_when_projection_mutates_the_control(self):
+        from unittest import mock
+        from sol_pi_hermes import observation_eval
+
+        real = observation_eval.project_request
+
+        def mutate(request, *args):
+            result = real(request, *args)
+            request["messages"][0]["tampered"] = True
+            return result
+
+        with mock.patch.object(observation_eval, "project_request", mutate), redirect_stdout(StringIO()) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        self.assertFalse(any(c["control_unchanged"] for c in json.loads(out.getvalue())["cases"]))
+        self.assertEqual(exit_code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
