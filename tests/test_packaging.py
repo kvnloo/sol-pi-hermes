@@ -65,6 +65,14 @@ class PackagingTests(unittest.TestCase):
             "sol-pi", self._declared_entry_point(), "hermes_agent.plugins").load()
         self.assertIs(loaded if callable(loaded) else getattr(loaded, "register", None), register)
 
+    def test_entry_point_package_is_listed_in_setuptools_packages(self) -> None:
+        # Static check: setuptools must list the entry point target, or a built wheel would not ship it.
+        top = self._declared_entry_point().split(":")[0].split(".")[0]
+        import tomllib  # _declared_entry_point skips first on Python < 3.11
+
+        cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn(top, cfg["tool"]["setuptools"]["packages"])
+
     def _run_in_host(self, code: str, enable: bool = False, sol_pi_config: str | None = None) -> str:
         # Runs `code` under Hermes's own interpreter with a fake dist-info on a temp
         # path and a temp HERMES_HOME, so no real Hermes environment is modified.
