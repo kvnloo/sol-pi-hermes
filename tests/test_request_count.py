@@ -2,7 +2,7 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
-from sol_pi_hermes.observation_pack import project_messages
+from sol_pi_hermes.observation_pack import project_messages, project_request
 
 
 class RequestCountTests(unittest.TestCase):
@@ -31,3 +31,20 @@ class RequestCountTests(unittest.TestCase):
             self.assertNotEqual(result[0]['content'], first['content'])
             self.assertEqual(result[1:], [second, second])
             self.assertEqual(sorted(counts.values()), [1, 3])
+
+    def test_request_middleware_duplicates_and_distinct_over_four_requests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dup = {'role': 'tool', 'tool_call_id': 'dup', 'content': 'x' * 15000}
+            other = {**dup, 'tool_call_id': 'other'}
+            messages = [dup, dup, dup, other]
+            request = {'messages': messages}
+            original = copy.deepcopy(request)
+            counts = {}
+            for send in range(1, 5):
+                out = project_request(request, Path(tmp), counts)
+                got = request['messages'] if out is None else out['request']['messages']
+                self.assertTrue(got[0] == got[1] == got[2])
+                for item, src in zip(got, messages):
+                    self.assertEqual(item['content'] == src['content'], send <= 2)
+            self.assertEqual(request, original)
+            self.assertEqual(sorted(counts.values()), [4, 4])
