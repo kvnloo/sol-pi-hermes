@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
+import subprocess
 import sys
+import tempfile
 import types as stdlib_types
 import unittest
 from pathlib import Path
@@ -50,6 +53,29 @@ class PackagingTests(unittest.TestCase):
                 if stripped.startswith("import ") or stripped.startswith("from "):
                     self.assertNotIn(".ts", stripped)
                     self.assertNotIn("sol-pi/index", stripped)
+
+    def test_installed_wheel_exposes_hermes_plugin_entry_point(self) -> None:
+        if not all(importlib.util.find_spec(name) for name in ("pip", "setuptools", "wheel")):
+            self.skipTest("offline wheel build needs pip, setuptools and wheel")
+        with tempfile.TemporaryDirectory() as tmp:
+            src, target = Path(tmp, "src"), Path(tmp, "site")
+            shutil.copytree(ROOT, src, ignore=shutil.ignore_patterns(".git", "build", "*.egg-info", "__pycache__"))
+            install = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--no-deps", "--no-build-isolation",
+                 "--no-index", "--target", str(target), str(src)],
+                capture_output=True, text=True, timeout=300)
+            self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
+            found = subprocess.run(
+                [sys.executable, "-c",
+                 "import sys; sys.path.insert(0, sys.argv[1]);"
+                 "from importlib.metadata import distributions;"
+                 "eps = [e for d in distributions(path=[sys.argv[1]]) for e in d.entry_points"
+                 " if e.group == 'hermes_agent.plugins'];"
+                 "assert [(e.name, e.value) for e in eps] == [('sol-pi', 'sol_pi_hermes:register')], eps;"
+                 "import sol_pi_hermes; assert sol_pi_hermes.__file__.startswith(sys.argv[1]);"
+                 "assert callable(eps[0].load()); print('ok')", str(target)],
+                capture_output=True, text=True, timeout=60, cwd=tmp)
+        self.assertEqual(found.stdout.strip(), "ok", found.stderr)
 
 
 if __name__ == "__main__":
