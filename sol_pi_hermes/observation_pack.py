@@ -94,8 +94,18 @@ def is_pure_text_tool_result(message: Mapping[str, Any]) -> bool:
         return False
     if isinstance(content, str):
         return True
+    # Archives retain text only. Metadata-bearing or malformed blocks cannot
+    # be reconstructed by recall, so preserve their entire tool result.
     if isinstance(content, list) and content and all(
-        (isinstance(b, str) or (isinstance(b, Mapping) and b.get("type") == "text"))
+        (
+            isinstance(b, str)
+            or (
+                isinstance(b, Mapping)
+                and set(b) == {"type", "text"}
+                and b.get("type") == "text"
+                and isinstance(b.get("text"), str)
+            )
+        )
         for b in content
     ):
         return True

@@ -50,3 +50,11 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+ObservationPack leaves a tool result unchanged when any text block carries
+extra fields (including citations, annotations, IDs or cache controls), or has
+missing/non-string text. The archive is text-only and cannot restore those
+fields. Plain strings and exact `{type: "text", text: <string>}` blocks remain
+eligible, including mixed lists of those two plain forms. Rich results incur no
+archive or send-count side effects; this conservative gate favors retaining
+provider-visible metadata over token savings.
