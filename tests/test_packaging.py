@@ -8,6 +8,7 @@ import sys
 import tempfile
 import types as stdlib_types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +80,26 @@ class PackagingTests(unittest.TestCase):
         for line in out.splitlines():
             if line.startswith("\u26a0"):
                 self.assertIn("declares sol_pi_patch, sol_pi_write but", line)
+
+    def _run_validate_test_without_hermes(self, flag: str | None) -> unittest.TestResult:
+        env = {k: v for k, v in os.environ.items() if k != "SOL_PI_REQUIRE_HERMES"}
+        if flag is not None:
+            env["SOL_PI_REQUIRE_HERMES"] = flag
+        result = unittest.TestResult()
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch("shutil.which", return_value=None):
+            PackagingTests("test_real_hermes_plugins_validate_passes").run(result)
+        return result
+
+    def test_require_hermes_flag_fails_instead_of_skipping(self) -> None:
+        result = self._run_validate_test_without_hermes("1")
+        self.assertEqual(len(result.failures), 1, result.skipped)
+        self.assertEqual(result.skipped, [])
+        self.assertEqual(result.errors, [])
+
+    def test_missing_hermes_skips_when_flag_unset(self) -> None:
+        result = self._run_validate_test_without_hermes(None)
+        self.assertEqual(len(result.skipped), 1)
+        self.assertEqual((result.failures, result.errors), ([], []))
 
 
 if __name__ == "__main__":
