@@ -19,6 +19,18 @@ class RecallLedgerFailOpenTests(unittest.TestCase):
             self.assertIn("payload", result["content"])
             self.assertFalse(target.exists())
 
+    def test_healthy_recall_still_writes_one_ledger_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            observation = create_observation({"role": "tool", "content": "payload\n" * 3000}, root)
+            ensure_stored(observation)
+            result = json.loads(recall(root, observation.id))
+            lines = [json.loads(l) for l in ledger_path(root).read_text().splitlines()]
+            records = [r for r in lines if r["event"] == "recall"]
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["id"], observation.id)
+            self.assertEqual(records[0]["nextOffset"], result["next_offset"])
+
     def test_unwritable_ledger_does_not_fail_successful_recall(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "root"
