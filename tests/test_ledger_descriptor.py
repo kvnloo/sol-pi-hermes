@@ -26,6 +26,12 @@ class LedgerDescriptorTests(unittest.TestCase):
         finally:
             os.close(reader)
 
+    def test_non_fifo_nonregular_device_rejected_before_lock(self):
+        with patch('sol_pi_hermes.observation_pack.ledger_path', return_value=Path(os.devnull)):
+            with patch('sol_pi_hermes.observation_pack._try_lock', side_effect=AssertionError('nonregular lock')):
+                with self.assertRaises(OSError):
+                    append_ledger(self.root, {'event': 'synthetic'})
+
     def test_fifo_substituted_at_open_is_rejected_and_fd_closed(self):
         self.path.write_bytes(b'')
         real_open = os.open
