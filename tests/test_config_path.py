@@ -77,3 +77,11 @@ class ConfigPathTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Unable to read SoL-Pi config'):
                 register(ctx)
         self.assertEqual(ctx.tools, {})
+
+    def test_registration_without_hermes_constants_falls_back_to_dot_hermes(self):
+        write(self.tmp / 'userhome', True)
+        ctx = Ctx()
+        with patch.dict(sys.modules, {'hermes_constants': None}), \
+                patch('pathlib.Path.home', return_value=self.tmp / 'userhome'):
+            register(ctx)
+        self.assertGreater(set(ctx.tools), {'obs_recall'})
