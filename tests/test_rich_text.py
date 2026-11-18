@@ -45,3 +45,14 @@ class RichTextPreservationTests(unittest.TestCase):
                 result = project_messages([message], Path(tmp), counts)
                 self.assertIn('[large tool result replaced', result[0]['content'][0]['text'])
                 self.assertEqual(message, original)
+
+    def test_non_text_typed_blocks_are_not_packed(self):
+        for block in [{'type': 'image', 'text': 'alt'}, {'type': 'input_text', 'text': 'x'},
+                      {'type': None, 'text': 'x'}]:
+            with self.subTest(block=block), tempfile.TemporaryDirectory() as tmp:
+                message = {'role': 'tool', 'content': ['x' * 16000, block]}
+                counts = {}
+                for _ in range(3):
+                    self.assertEqual(project_messages([message], Path(tmp), counts), [message])
+                self.assertEqual(counts, {})
+                self.assertEqual(list(Path(tmp).rglob('*')), [])
