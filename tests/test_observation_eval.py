@@ -209,6 +209,31 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(sends[observation_eval.FULL_SENDS - 1]["packed"])
         self.assertEqual(exit_code, 1)
 
+    def test_cli_rejects_image_loss_even_when_text_recall_is_exact(self):
+        fixtures = _fixture_set()
+        image_case = next(c for c in fixtures["cases"] if c["name"] == "multimodal")
+        image_case["control"]["content_blocks"][0]["text"] += "x" * 20000
+        fixtures["cases"] = [image_case]
+        real = observation_eval.project_request
+
+        def strip_image(request, root, counts):
+            text_only = copy.deepcopy(request)
+            text_only["messages"][0]["content"] = request["messages"][0]["content"][0]["text"]
+            return real(text_only, root, counts)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "fixtures.json"
+            path.write_text(json.dumps(fixtures))
+            with mock.patch.object(observation_eval, "project_request", strip_image), redirect_stdout(StringIO()) as out:
+                exit_code = main(["--fixtures", str(path)])
+        case = json.loads(out.getvalue())["cases"][0]
+        self.assertTrue(case["control_unchanged"])
+        self.assertFalse(case["sends"][0]["packed"])
+        self.assertFalse(case["sends"][1]["packed"])
+        self.assertTrue(case["sends"][2]["byte_exact_recall"])
+        self.assertFalse(case["non_text_content_unchanged"])
+        self.assertEqual(exit_code, 1)
+
     def test_cli_fails_when_projection_mutates_the_control(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval

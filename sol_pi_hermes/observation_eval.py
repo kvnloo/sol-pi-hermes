@@ -139,6 +139,11 @@ def evaluate_fixture(
     }
     request = {"model": "offline-shadow-only", "messages": [message]}
     frozen = copy.deepcopy(request)
+    # Text recall cannot certify image or other non-text block preservation.
+    requires_passthrough = isinstance(original_content, list) and any(
+        not isinstance(block, dict) or block.get("type") != "text"
+        for block in original_content
+    )
     original_text = _text_part(original_content)
     original_bytes = _bytes(original_content)
     original_estimated_tokens = estimate_tokens(original_text)
@@ -200,6 +205,9 @@ def evaluate_fixture(
         "control_indices": _indices(original_text),
         "control_element_tokens": _tokens(original_text, raw_tokens),
         "control_unchanged": request == frozen,
+        "non_text_content_unchanged": not requires_passthrough or all(
+            not send["packed"] for send in sends
+        ),
         "sends": sends,
         "saved_bytes": sum(item["saved_bytes"] for item in sends),
         "saved_estimated_text_tokens": sum(item["saved_estimated_text_tokens"] for item in sends),
@@ -256,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     return int(
         bool(report["totals"]["lost_fields_after_recall"])
         or any(not case["control_unchanged"] for case in report["cases"])
+        or any(not case["non_text_content_unchanged"] for case in report["cases"])
         or any(
             send["packed"] and send["send"] <= FULL_SENDS
             for case in report["cases"]
