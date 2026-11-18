@@ -148,3 +148,29 @@ class ReviewSafetyTests(unittest.TestCase):
             records = [json.loads(line) for line in ledger_path(Path(tmp)).read_bytes().splitlines()]
             self.assertEqual(len(records), 120)
             self.assertTrue(all(r['blob'] == r['w'] * 20000 for r in records))
+
+    def test_ledger_append_holds_flock_while_writing(self):
+        real_write = os.write
+        held = []
+
+        def probe(fd, data):
+            with open(ledger_path(root), 'rb') as other:
+                try:
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    held.append(False)
+                except BlockingIOError:
+                    held.append(True)
+            return real_write(fd, data)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.os.write', probe):
+                append_ledger(root, {'event': 'locked'})
+        self.assertEqual(held, [True])
+
+    def test_ledger_append_without_fcntl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.fcntl', None):
+                append_ledger(root, {'event': 'nofcntl'})
+            self.assertEqual(json.loads(ledger_path(root).read_text())['event'], 'nofcntl')
