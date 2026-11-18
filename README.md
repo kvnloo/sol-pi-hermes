@@ -88,3 +88,10 @@ equivalence remain separate gates before considering model-visible activation.
 The default synthetic shadow-evaluation fixtures ship inside the installed
 `sol_pi_hermes` package. `python -m sol_pi_hermes.observation_eval` therefore runs
 outside a source checkout too; `--fixtures` still accepts an explicit JSON file.
+
+The shadow evaluator's passthrough invariant includes metadata-bearing text
+blocks, not just images: exact recall of text cannot certify retained citations,
+annotations, cache controls or unknown block fields. Such loss fails the CLI even
+when text recall is byte-exact. Plain string blocks remain text-only controls.
+This evaluator rule is independent of the candidate projection's eligibility
+function; it does not itself change production packing or enable rich packing.

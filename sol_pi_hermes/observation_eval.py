@@ -138,9 +138,14 @@ def evaluate_fixture(
     }
     request = {"model": "offline-shadow-only", "messages": [message]}
     frozen = copy.deepcopy(request)
-    # Text recall cannot certify image or other non-text block preservation.
+    # Text recall cannot certify image, metadata or malformed-block preservation.
+    # Keep this control-side rule independent of the candidate projection gate.
     requires_passthrough = isinstance(original_content, list) and any(
-        not isinstance(block, dict) or block.get("type") != "text"
+        not (
+            isinstance(block, str)
+            or (isinstance(block, dict) and set(block) == {"type", "text"}
+                and block.get("type") == "text" and isinstance(block.get("text"), str))
+        )
         for block in original_content
     )
     original_text = _text_part(original_content)
