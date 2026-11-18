@@ -119,6 +119,25 @@ class ObservationShadowTests(unittest.TestCase):
             self.assertEqual(json.loads(out.getvalue()), json.loads(report_path.read_text()))
             self.assertEqual(json.loads(out.getvalue())["totals"]["lost_fields_after_recall"], [])
 
+    def test_cli_fails_on_inexact_recall_even_when_no_field_is_lost(self):
+        from unittest import mock
+        from sol_pi_hermes import observation_eval
+
+        real = observation_eval.recall
+
+        def padded(*args):
+            page = json.loads(real(*args))
+            if page["eof"]:
+                page["content"] += " "  # JSON-equivalent but not byte exact
+            return json.dumps(page)
+
+        with mock.patch.object(observation_eval, "recall", padded), redirect_stdout(StringIO()) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["totals"]["lost_fields_after_recall"], [])
+        self.assertTrue(any(s["byte_exact_recall"] is False for c in report["cases"] for s in c["sends"]))
+        self.assertEqual(exit_code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
