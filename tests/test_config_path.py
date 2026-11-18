@@ -1,6 +1,8 @@
 import json
 import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -57,3 +59,21 @@ class ConfigPathTests(unittest.TestCase):
     def test_hermes_home_file_enables_fusion_at_registration(self):
         write(self.home, True, '.')
         self.assertGreater(self._register_in_project(), {'obs_recall'})
+
+    def test_registration_uses_active_profile_home_not_dot_hermes(self):
+        write(self.home, True, '.')
+        fake = types.ModuleType('hermes_constants')
+        fake.get_hermes_home = lambda: str(self.home)
+        ctx = Ctx()
+        with patch.dict(sys.modules, {'hermes_constants': fake}), \
+                patch('pathlib.Path.home', return_value=self.tmp / 'nohome'):
+            register(ctx)
+        self.assertGreater(set(ctx.tools), {'obs_recall'})
+
+    def test_malformed_policy_file_fails_registration_closed(self):
+        (self.home / 'sol-pi.json').write_text('{not json')
+        ctx = Ctx()
+        with patch('sol_pi_hermes.config._hermes_home', return_value=self.home):
+            with self.assertRaisesRegex(ValueError, 'Unable to read SoL-Pi config'):
+                register(ctx)
+        self.assertEqual(ctx.tools, {})
