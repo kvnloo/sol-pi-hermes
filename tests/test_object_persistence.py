@@ -95,3 +95,22 @@ class ObjectPersistenceTests(unittest.TestCase):
             list(workers.map(lambda _: ensure_stored(self.observation), range(24)))
         self.assertEqual(self.observation.file_path.read_text(), self.message['content'])
         self.assertEqual(list(self.observation.file_path.parent.iterdir()), [self.observation.file_path])
+
+    def test_equal_size_corruption_is_rejected_by_hash(self):
+        self.observation.file_path.parent.mkdir(parents=True)
+        corrupt = b'x' * self.observation.bytes
+        self.observation.file_path.write_bytes(corrupt)
+        with self.assertRaisesRegex(OSError, 'hash mismatch'):
+            ensure_stored(self.observation)
+        self.assertEqual(self.observation.file_path.read_bytes(), corrupt)
+        self.assertEqual(len(list(self.observation.file_path.parent.iterdir())), 1)
+
+    def test_symlink_at_object_path_is_rejected_and_target_untouched(self):
+        self.observation.file_path.parent.mkdir(parents=True)
+        target = self.root / 'target.txt'
+        target.write_text(self.message['content'])
+        self.observation.file_path.symlink_to(target)
+        with self.assertRaisesRegex(OSError, 'not a regular file'):
+            ensure_stored(self.observation)
+        self.assertEqual(target.read_text(), self.message['content'])
+        self.assertTrue(self.observation.file_path.is_symlink())
