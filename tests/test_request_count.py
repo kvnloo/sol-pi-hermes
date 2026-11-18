@@ -2,7 +2,8 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
-from sol_pi_hermes.observation_pack import project_messages, project_request
+import json
+from sol_pi_hermes.observation_pack import ledger_path, project_messages, project_request
 
 
 class RequestCountTests(unittest.TestCase):
@@ -48,3 +49,13 @@ class RequestCountTests(unittest.TestCase):
                     self.assertEqual(item['content'] == src['content'], send <= 2)
             self.assertEqual(request, original)
             self.assertEqual(sorted(counts.values()), [4, 4])
+
+    def test_ledger_records_one_request_and_send_number_for_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            msg = {'role': 'tool', 'tool_call_id': 'dup', 'content': 'x' * 15000}
+            counts = {}
+            for _ in range(3):
+                project_messages([msg, msg], Path(tmp), counts)
+            rows = [json.loads(line) for line in ledger_path(Path(tmp)).read_text().splitlines()]
+            got = [(r['event'], r['request'], r.get('sendNumber')) for r in rows]
+            self.assertEqual(got, [('full', 1, None)] * 4 + [('placeholder', 1, 3)] * 2)
