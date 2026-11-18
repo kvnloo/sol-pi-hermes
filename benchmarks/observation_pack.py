@@ -22,9 +22,11 @@ def wire(value: object) -> str:
 
 def measure(messages: list[dict], requests: int = 4,
             counter: Callable[[str], int] | None = None,
-            counter_name: str = "ceil_unicode_chars_div_4_estimate") -> dict:
+            counter_name: str | None = None) -> dict:
     if requests < 1:
         raise ValueError("requests must be positive")
+    if counter_name is None:
+        counter_name = "unnamed_custom_counter" if counter else "ceil_unicode_chars_div_4_estimate"
     counter = counter or (lambda text: math.ceil(len(text) / 4))
     original = copy.deepcopy(messages)
     source = {"messages": messages}
@@ -102,7 +104,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.requests < 1:
         parser.error("--requests must be positive")
-    counter, name = None, "ceil_unicode_chars_div_4_estimate"
+    counter, name = None, None
     if args.encoding:
         try:
             import tiktoken

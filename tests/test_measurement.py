@@ -49,6 +49,10 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(result['control_units'], result['control_bytes'])
         self.assertEqual(result['recalled_observations'], 1)
 
+    def test_unnamed_custom_counter_is_not_labeled_as_char_estimate(self):
+        result = measure(fixtures()['small_control'], requests=1, counter=len)
+        self.assertEqual(result['counter'], 'unnamed_custom_counter')
+
     def test_default_estimate_is_ceil_of_unicode_chars_over_four(self):
         source = [{'role': 'tool', 'name': 't', 'tool_call_id': 'x', 'content': '測定🙂a'}]
         text = observation_pack.wire({'messages': source})
