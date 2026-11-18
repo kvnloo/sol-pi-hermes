@@ -65,10 +65,9 @@ class PackagingTests(unittest.TestCase):
             "sol-pi", self._declared_entry_point(), "hermes_agent.plugins").load()
         self.assertIs(loaded if callable(loaded) else getattr(loaded, "register", None), register)
 
-    def test_installed_entry_point_is_discovered_by_hermes(self) -> None:
-        # Runs Hermes's own discovery; needs the interpreter to be the host's
-        # (CI runs the suite under the host venv). Fake dist-info on a temp
-        # path, so no real Hermes environment is modified.
+    def _run_in_host(self, code: str, enable: bool = False) -> str:
+        # Runs `code` under Hermes's own interpreter with a fake dist-info on a temp
+        # path and a temp HERMES_HOME, so no real Hermes environment is modified.
         target = self._declared_entry_point()
         host = importlib.util.find_spec("hermes_cli")
         if host is None:
@@ -80,17 +79,37 @@ class PackagingTests(unittest.TestCase):
             dist.mkdir()
             (dist / "METADATA").write_text("Metadata-Version: 2.1\nName: sol-pi-hermes\nVersion: 0.0\n")
             (dist / "entry_points.txt").write_text(f"[hermes_agent.plugins]\nsol-pi = {target}\n")
+            if enable:
+                (Path(home) / "config.yaml").write_text("plugins:\n  enabled: [sol-pi]\n")
             run = subprocess.run(
-                [sys.executable, "-c",
-                 "from hermes_cli.plugins_discovery import discover_entrypoint_manifests as d;"
-                 "print([(m.name, m.source, m.path) for m in d()])"],
+                [sys.executable, "-c", code],
                 capture_output=True, text=True, timeout=120,
                 cwd=Path(host.origin).parents[1],  # host root holds sibling modules
                 env={**os.environ, "HERMES_HOME": home,
                      "PYTHONPATH": os.pathsep.join([site, str(ROOT)])},
             )
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertIn(f"('sol-pi', 'entrypoint', '{target}')", run.stdout)
+        return run.stdout
+
+    def test_installed_entry_point_is_discovered_by_hermes(self) -> None:
+        out = self._run_in_host(
+            "from hermes_cli.plugins_discovery import discover_entrypoint_manifests as d;"
+            "print([(m.name, m.source, m.path) for m in d()])")
+        self.assertIn(f"('sol-pi', 'entrypoint', '{self._declared_entry_point()}')", out)
+
+    def test_entry_point_plugin_loads_and_registers_in_hermes(self) -> None:
+        # Discovery alone is not enough: with no plugin.yaml on this path, the
+        # host must still load the plugin and accept its middleware and tool.
+        out = self._run_in_host(
+            "from hermes_cli.plugins import get_plugin_manager as g;"
+            "m = g(); m.discover_and_load(); p = m._plugins.get('sol-pi');"
+            "print('LOADED', bool(p and p.enabled), p and p.error);"
+            "print('MW', len(m._middleware.get('llm_request', [])));"
+            "print('TOOLS', sorted(getattr(p, 'tools_registered', []) or []))",
+            enable=True)
+        self.assertIn("LOADED True None", out)
+        self.assertIn("MW 1", out)
+        self.assertIn("TOOLS ['obs_recall']", out)
 
     def test_no_typescript_imports(self) -> None:
         for path in ROOT.rglob("*.py"):
