@@ -17,6 +17,7 @@ class MeasurementTests(unittest.TestCase):
                 source = fixtures()[name]
                 original = copy.deepcopy(source)
                 result = measure(source)
+        self.assertEqual(result['counter'], 'ceil_unicode_chars_div_4_estimate')
                 self.assertEqual(source, original)
                 self.assertTrue(result['transcript_unchanged'])
                 self.assertTrue(result['recall_roundtrip'])
@@ -66,6 +67,30 @@ class MeasurementTests(unittest.TestCase):
         self.assertTrue(result['recall_roundtrip'])
         self.assertEqual(result['recall_response_bytes'],
                          sum(len(observation_pack.wire(json.loads(p)).encode()) for p in pages))
+
+    def test_unicode_recall_bytes_are_utf8_and_duplicates_counted_once(self):
+        pages = []
+        real = observation_pack.recall
+        with mock.patch.object(observation_pack, 'recall',
+                               lambda *a: pages.append(real(*a)) or pages[-1]):
+            once = measure(fixtures()['large_unicode'])
+            pages_once = len(pages)
+            twice = measure(fixtures()['large_unicode'] * 2)
+        self.assertEqual(len(pages), 2 * pages_once)
+        self.assertEqual(twice['recall_response_units'], once['recall_response_units'])
+        self.assertEqual(once['recall_response_bytes'],
+                         sum(len(observation_pack.wire(json.loads(p)).encode()) for p in pages[:pages_once]))
+        self.assertGreater(once['recall_response_bytes'],
+                           sum(len(observation_pack.wire(json.loads(p))) for p in pages[:pages_once]))
+
+    def test_corrupted_recall_page_fails_roundtrip(self):
+        real = observation_pack.recall
+        def corrupt(*a):
+            page = json.loads(real(*a))
+            page['content'] += 'x'
+            return json.dumps(page)
+        with mock.patch.object(observation_pack, 'recall', corrupt):
+            self.assertFalse(measure(fixtures()['large_unicode'])['recall_roundtrip'])
 
     def test_missing_tokenizer_fails_without_estimate_fallback(self):
         out, err = io.StringIO(), io.StringIO()
