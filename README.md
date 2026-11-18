@@ -50,3 +50,14 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Recall file opening
+
+Recall validates a regular archive file with `lstat`, opens it with no-follow and
+nonblocking flags where available, then checks the opened descriptor's type and
+device/inode identity before reading. Size and content come from that descriptor,
+not separate pathname lookups. A substituted symlink, FIFO or different file is
+rejected; rejected descriptors are closed. Without a no-follow flag, identity
+validation still rejects a link to a different file before reading its content.
+This is not a sandbox against arbitrary modifications to archive directories or
+in-place writes to an already-open file. Native non-POSIX behavior is unqualified.
