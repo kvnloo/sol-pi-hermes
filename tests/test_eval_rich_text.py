@@ -46,3 +46,18 @@ class RichTextShadowGateTests(unittest.TestCase):
         self.assertTrue(case['sends'][2]['byte_exact_recall'])
         self.assertTrue(case['non_text_content_unchanged'])
         self.assertEqual(code, 0)
+
+    def test_cli_rejects_projection_of_malformed_blocks(self):
+        for bad in [{'type': 'text', 'text': 7}, None, 7]:
+            with self.subTest(bad=bad):
+                real = observation_eval.project_request
+                def drop_bad(request, root, counts):
+                    stripped = copy.deepcopy(request)
+                    stripped['messages'][0]['content'] = [
+                        {'type': 'text', 'text': 'x' * 16000}
+                    ]
+                    return real(stripped, root, counts)
+                with mock.patch.object(observation_eval, 'project_request', drop_bad):
+                    code, case = self.run_case([{'type': 'text', 'text': 'x' * 16000}, bad])
+                self.assertFalse(case['non_text_content_unchanged'])
+                self.assertEqual(code, 1)
