@@ -29,6 +29,13 @@ class EprGatePins(unittest.TestCase):
     def test_command_matching_is_case_insensitive(self) -> None:
         self.assertTrue(should_reduce("a" * MIN_BYTES, "PYTEST -q"))
 
+    def test_non_diagnostic_command_is_never_reduced(self) -> None:
+        self.assertFalse(should_reduce("a" * MIN_BYTES, "echo hi"))
+
+    def test_python3_module_runners_are_diagnostic(self) -> None:
+        for cmd in ("python3 -m unittest", "python3 -m py_compile x.py"):
+            self.assertTrue(should_reduce("a" * MIN_BYTES, cmd), cmd)
+
     def test_secret_gate_blocks_reduction(self) -> None:
         self.assertFalse(should_reduce("api_key=abc\n" + "a" * MIN_BYTES, "pytest"))
 
