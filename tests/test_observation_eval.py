@@ -235,6 +235,25 @@ class ObservationShadowTests(unittest.TestCase):
         )
         self.assertEqual(image["sends"][0]["before_bytes"], image["sends"][0]["after_bytes"])
 
+    def test_control_indices_and_visible_element_tokens_are_reported(self):
+        fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "stale"))
+        token = fixture["capture"]["elements"][0]["element_token"]
+        fixture["control"]["text_payload"]["note"] = f"token {token}"
+        case = evaluate_fixture(fixture, clock=_deterministic_clock())
+        self.assertEqual(case["control_element_tokens"], [token])
+        self.assertEqual(case["control_indices"], list(range(1, case["captured_element_count"] + 1)))
+        for send in case["sends"]:
+            self.assertEqual(send["retained_element_tokens"], [token])
+
+    def test_packed_send_reports_no_retained_element_tokens(self):
+        fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "large_tree"))
+        fixture["capture"]["elements"][0]["element_token"] = "tok_abc"
+        fixture["control"]["text_payload"]["note"] = "token tok_abc"
+        case = evaluate_fixture(fixture, clock=_deterministic_clock())
+        self.assertEqual(case["control_element_tokens"], ["tok_abc"])
+        self.assertEqual([s["packed"] for s in case["sends"]], [False, False, True])
+        self.assertEqual([s["retained_element_tokens"] for s in case["sends"]], [["tok_abc"], ["tok_abc"], []])
+
     def test_recall_reassembly_rejects_error_malformed_and_stalled_pages(self):
         for reply, message in (
             ({"error": "gone"}, "gone"),
