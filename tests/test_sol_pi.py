@@ -101,6 +101,11 @@ class ObservationPackTests(unittest.TestCase):
         self.assertEqual(head, wide)
         self.assertEqual(tail, wide)
 
+    def test_placeholder_excerpt_is_empty_when_edge_line_exceeds_budget(self) -> None:
+        huge = "z" * 600 + "\n"  # one line over the 512-byte half budget: never truncated mid-line
+        head, tail = self._excerpts(huge + "mid\n" * 4000 + huge)
+        self.assertEqual((head, tail), ("", ""))
+
     def test_reducer_receipt_is_not_packed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
