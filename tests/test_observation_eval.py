@@ -170,6 +170,28 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertFalse(any(c["control_unchanged"] for c in json.loads(out.getvalue())["cases"]))
         self.assertEqual(exit_code, 1)
 
+    def test_invalid_recordings_are_rejected(self):
+        bad_schema = {**_fixture_set(), "schema_version": 2}
+        with self.assertRaises(ValueError):
+            evaluate_recordings(bad_schema)
+        case = copy.deepcopy(_fixture_set()["cases"][0])
+        case["name"] = ""
+        with self.assertRaises(ValueError):
+            evaluate_fixture(case)
+
+    def test_totals_percent_and_multimodal_bytes_count_the_image(self):
+        report = evaluate_recordings(_fixture_set(), clock=_deterministic_clock())
+        totals = report["totals"]
+        self.assertEqual(totals["saved_percent"], round(100 * totals["saved_bytes"] / totals["before_bytes"], 2))
+        self.assertGreater(totals["saved_percent"], 0)
+        image = next(c for c in report["cases"] if c["name"] == "multimodal")
+        blocks = next(c for c in _fixture_set()["cases"] if c["name"] == "multimodal")["control"]["content_blocks"]
+        self.assertEqual(
+            image["sends"][0]["before_bytes"],
+            len(json.dumps(blocks, ensure_ascii=False, sort_keys=True).encode("utf-8")),
+        )
+        self.assertEqual(image["sends"][0]["before_bytes"], image["sends"][0]["after_bytes"])
+
 
 if __name__ == "__main__":
     unittest.main()
