@@ -325,6 +325,23 @@ class ObservationShadowTests(unittest.TestCase):
         )
         self.assertEqual(image["sends"][0]["before_bytes"], image["sends"][0]["after_bytes"])
 
+    def test_saved_percent_uses_exact_before_bytes_denominator(self):
+        real = observation_eval.project_request
+
+        def inflate(request, root, counts):
+            out = real(request, root, counts)
+            if out is not None:
+                out["request"]["messages"][0]["content"] += "\n" + "x" * 1_000_000
+            return out
+
+        frozen = _fixture_set()
+        case = next(x for x in frozen["cases"] if x["name"] == "large_tree")
+        with mock.patch.object(observation_eval, "project_request", inflate):
+            totals = evaluate_recordings({**frozen, "cases": [case]})["totals"]
+        # 66453 control bytes; one packed send saves 21728 and pays a 1_000_001-byte pad.
+        self.assertEqual((totals["before_bytes"], totals["saved_bytes"]), (66453, -978273))
+        self.assertEqual(totals["saved_percent"], -1472.13)
+
     def test_multimodal_wire_bytes_count_non_ascii_text_unescaped(self):
         fixture = copy.deepcopy(next(c for c in _fixture_set()["cases"] if c["name"] == "multimodal"))
         fixture["control"]["content_blocks"] = [{"type": "text", "text": "caf\u00e9"}]
