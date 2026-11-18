@@ -72,6 +72,18 @@ class MutationConfirmationTests(unittest.TestCase):
                 self.assertEqual(result['error'], expected)
                 self.assertEqual(result['then_run'], '[then_run:skipped]')
 
+    def test_falsy_error_and_boolean_exit_code_are_not_failures(self):
+        # Pins the "truthy error" and "exact int exit_code" contracts (null error is a plausible success shape).
+        for out, status in (('{"exit_code":0,"error":null}', '[then_run:succeeded]'),
+                            ('{"exit_code":0,"error":""}', '[then_run:succeeded]'),
+                            ('{"exit_code":true}', '[then_run:unknown]')):
+            with self.subTest(out=out):
+                calls = []
+                result = json.loads(execute_mutation_then_run(mutate=lambda:'{"success":true,"error":null}', absolute_path=None,
+                    then_run={'command':'go'}, run_command=lambda *a:calls.append(a) or out))
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(result['then_run'], status)
+
     def test_unconfirmed_result_without_failure_gets_generic_error(self):
         result = json.loads(execute_mutation_then_run(mutate=lambda:'{}', absolute_path=None,
             then_run={'command':'never'}, run_command=lambda *_:self.fail('unexpected command')))
