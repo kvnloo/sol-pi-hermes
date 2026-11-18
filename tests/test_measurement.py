@@ -175,3 +175,21 @@ class MeasurementTests(unittest.TestCase):
         self.assertTrue(calls)
         for call in calls:
             self.assertEqual(call.kwargs, {'disallowed_special': ()})
+
+    def test_default_cli_reports_every_fixture_with_estimate_counter(self):
+        out = io.StringIO()
+        with mock.patch.dict(sys.modules, {'tiktoken': None}), \
+                mock.patch.object(sys, 'argv', ['x', '--requests', '4']), \
+                contextlib.redirect_stdout(out):
+            main()
+        report = json.loads(out.getvalue())
+        self.assertEqual(set(report), set(fixtures()))
+        for name, result in report.items():
+            with self.subTest(name=name):
+                self.assertEqual(result['counter'], 'ceil_unicode_chars_div_4_estimate')
+                self.assertIsNone(result['provider_billed_tokens'])
+                self.assertEqual(len(result['requests']), 4)
+                self.assertTrue(result['recall_roundtrip'] and result['transcript_unchanged'])
+                packed = name in ('large_ascii', 'large_unicode')
+                self.assertEqual(result['saved_units_before_recall'] > 0, packed)
+                self.assertEqual(result['recalled_observations'], int(packed))
