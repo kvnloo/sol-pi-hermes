@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import types as stdlib_types
 import unittest
 from pathlib import Path
@@ -50,6 +54,24 @@ class PackagingTests(unittest.TestCase):
                 if stripped.startswith("import ") or stripped.startswith("from "):
                     self.assertNotIn(".ts", stripped)
                     self.assertNotIn("sol-pi/index", stripped)
+
+    @unittest.skipUnless(shutil.which("hermes"), "hermes CLI not installed")
+    def test_real_hermes_plugins_validate_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            run = subprocess.run(
+                ["hermes", "plugins", "validate", str(ROOT)],
+                capture_output=True, text=True, timeout=120,
+                env={**os.environ, "HERMES_HOME": home},
+            )
+        out = run.stdout + run.stderr
+        self.assertEqual(run.returncode, 0, out)
+        self.assertIn("Validation passed", out)
+        self.assertNotIn("\u2717", out)
+        # Action Fusion is off by default, so the default probe legitimately
+        # omits its tools; any *other* warning is a real manifest mismatch.
+        for line in out.splitlines():
+            if line.startswith("\u26a0"):
+                self.assertIn("declares sol_pi_patch, sol_pi_write but", line)
 
 
 if __name__ == "__main__":
