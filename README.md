@@ -61,3 +61,9 @@ rejected; rejected descriptors are closed. Without a no-follow flag, identity
 validation still rejects a link to a different file before reading its content.
 This is not a sandbox against arbitrary modifications to archive directories or
 in-place writes to an already-open file. Native non-POSIX behavior is unqualified.
+
+Recall refuses an empty page before the descriptor's observed EOF rather than
+returning the same next offset with `eof: false`. This catches truncation between
+the size check and read, and a byte budget too small for the next UTF-8 character.
+Legitimate empty EOF responses remain valid. This progress check does not make
+mutable archives immutable or detect every concurrent in-place content change.

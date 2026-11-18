@@ -358,6 +358,10 @@ def read_recall_chunk(
         end -= 1
     chunk = buffer[:end]
     next_offset = offset + len(chunk)
+    if next_offset == offset and next_offset < size:
+        # A truncated archive or unusably small UTF-8 budget must not return
+        # an apparently successful page that tells callers to repeat forever.
+        raise ValueError("Observation recall made no progress before EOF; archive or read budget may have changed")
     text = chunk.decode("utf-8")
     return {
         "text": text,
