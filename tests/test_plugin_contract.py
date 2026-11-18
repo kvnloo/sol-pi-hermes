@@ -128,6 +128,13 @@ class PluginContractTests(unittest.TestCase):
         versions = re.search(r"python-version: \[([^\]]*)\]", workflow)
         self.assertIsNotNone(versions)
         self.assertLessEqual({"3.10", "3.11", "3.12"}, set(re.findall(r"[\d.]+", versions[1])))
+        # Each leg must check out the repo and actually use its matrix interpreter.
+        self.assertRegex(workflow, r"(?m)^      - uses: actions/checkout@")
+        self.assertRegex(
+            workflow,
+            r"(?m)^      - uses: actions/setup-python@\S+\n        with:\n"
+            r"          python-version: \$\{\{ matrix\.python-version \}\}$",
+        )
         # Without these the installed-wheel test skips silently on every CI leg.
         self.assertRegex(workflow, r"(?m)^        run: python -m pip install setuptools wheel$")
         self.assertRegex(workflow, r"(?m)^        run: python -m unittest discover -s tests$")
