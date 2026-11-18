@@ -149,6 +149,16 @@ class OccTests(unittest.TestCase):
         self.assertFalse(gate.should_compact())
 
 
+class OccSettledRecordedTests(unittest.TestCase):
+    def test_agent_settled_is_recorded_even_when_nothing_is_pending(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        self.assertFalse(gate.settled)
+        self.assertFalse(gate.on_agent_settled())
+        self.assertTrue(gate.settled)
+        gate.on_plan_boundary()
+        self.assertTrue(gate.should_compact())
+
+
 class EprTests(unittest.TestCase):
     def test_secrets_are_not_reduced(self) -> None:
         body = "api_key=sekret\n" + ("e" * 5000)
