@@ -334,6 +334,26 @@ class ObservationShadowTests(unittest.TestCase):
             '{"a": 1, "b": 2, "c": 3}', '{"a": 1, "b": 99}')
         self.assertEqual(lost, ["b", "c"])
 
+    def test_inflating_projection_reports_negative_savings(self):
+        real = observation_eval.project_request
+
+        def inflate(request, root, counts):
+            out = real(request, root, counts)
+            if out is not None:
+                message = out["request"]["messages"][0]
+                message["content"] += "\n" + "x" * 50_000
+            return out
+
+        fixture = next(x for x in _fixture_set()["cases"] if x["name"] == "large_tree")
+        with mock.patch.object(observation_eval, "project_request", inflate):
+            case = evaluate_fixture(fixture, clock=_deterministic_clock())
+        packed = [s for s in case["sends"] if s["packed"]]
+        self.assertTrue(packed)
+        self.assertTrue(all(s["saved_bytes"] < 0 for s in packed))
+        self.assertTrue(all(s["saved_estimated_text_tokens"] < 0 for s in packed))
+        self.assertLess(case["saved_bytes"], 0)
+        self.assertLess(case["saved_estimated_text_tokens"], 0)
+
     def test_backwards_clock_never_yields_negative_latency(self):
         ticks = itertools.count(10_000, -100).__next__
         case = evaluate_fixture(_fixture_set()["cases"][0], clock=ticks)
