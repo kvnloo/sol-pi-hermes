@@ -129,6 +129,15 @@ class ReviewSafetyTests(unittest.TestCase):
             append_ledger(root, {'event': 'healthy'})
             self.assertEqual(path.read_bytes().count(b'\n\n'), 0)
 
+    def test_ledger_record_bytes_are_unchanged_json_dumps_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.datetime') as clock:
+                clock.now.return_value.isoformat.return_value = 'T'
+                append_ledger(root, {'event': 'é', 'n': 1})
+            self.assertEqual(ledger_path(root).read_bytes(),
+                             b'{"timestamp": "T", "event": "\\u00e9", "n": 1}\n')
+
     def test_ledger_short_writes_complete_one_record(self):
         real_write = os.write
         with tempfile.TemporaryDirectory() as tmp:
