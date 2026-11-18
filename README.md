@@ -50,3 +50,13 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Ledger contention
+
+The optional observation ledger uses a bounded lock attempt (50 non-blocking
+attempts, with 2 ms sleeps on contention). If locking times out, fails, or is
+unavailable on the platform, that telemetry record is omitted, rather than
+appended unsafely. Projection and recall remain available; the ledger is not
+a complete audit log. Successful cooperating writers hold the lock across
+torn-tail recovery and all short writes. Non-cooperating writers are not
+protected. Filesystem I/O itself is not time-bounded.

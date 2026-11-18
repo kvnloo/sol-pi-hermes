@@ -19,7 +19,7 @@ from typing import Any, Iterable, Mapping
 
 try:
     import fcntl
-except ImportError:  # non-POSIX hosts: O_APPEND single-record writes only
+except ImportError:  # non-POSIX hosts: omit optional ledger telemetry
     fcntl = None
 
 THRESHOLD_BYTES = 10 * 1024
@@ -239,30 +239,36 @@ def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
         raise OSError("Observation ledger must not be a symlink")
     fd = os.open(path, flags, 0o600)
     try:
-        _try_lock(fd)
+        if not _try_lock(fd):
+            # Telemetry is optional; unlocked short writes can corrupt other records.
+            return
         # A writer that died mid-record leaves no trailing newline; never glue onto it.
         size = os.fstat(fd).st_size
         if size and os.lseek(fd, size - 1, os.SEEK_SET) >= 0 and os.read(fd, 1) != b"\n":
             record = b"\n" + record
         view = memoryview(record)
         while view:
-            view = view[os.write(fd, view):]
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError("Observation ledger write made no progress")
+            view = view[written:]
     finally:
         os.close(fd)
 
 
-def _try_lock(fd: int) -> None:
-    """Serialize cooperating appenders for ~100ms at most; never stall a provider request."""
+def _try_lock(fd: int) -> bool:
+    """Bound lock retries to ~100ms; skip optional telemetry if unavailable."""
     if fcntl is None:
-        return
+        return False
     for _ in range(50):
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return
+            return True
         except BlockingIOError:
             time.sleep(0.002)
-        except OSError:  # e.g. ENOLCK on NFS: append unlocked rather than lose the record
-            return
+        except OSError:  # e.g. ENOLCK on NFS: do not risk corrupting the ledger
+            return False
+    return False
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:
