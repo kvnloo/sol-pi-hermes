@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.metadata
 import importlib.util
 import os
 import shutil
@@ -46,6 +47,47 @@ class PackagingTests(unittest.TestCase):
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         self.assertTrue(callable(module.register))
+
+    def _declared_entry_point(self) -> str:
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            self.skipTest("tomllib needs Python 3.11+")
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        return project["entry-points"]["hermes_agent.plugins"]["sol-pi"]
+
+    def test_entry_point_declared_and_resolves_to_register(self) -> None:
+        # Hermes does ep.load() then getattr(obj, "register"), so a
+        # "module:register" value (a function) would silently not register.
+        ep = importlib.metadata.EntryPoint("sol-pi", self._declared_entry_point(), "hermes_agent.plugins")
+        self.assertTrue(callable(getattr(ep.load(), "register", None)))
+
+    def test_installed_entry_point_is_discovered_by_hermes(self) -> None:
+        # Runs Hermes's own discovery; needs the interpreter to be the host's
+        # (CI runs the suite under the host venv). Fake dist-info on a temp
+        # path, so no real Hermes environment is modified.
+        target = self._declared_entry_point()
+        host = importlib.util.find_spec("hermes_cli")
+        if host is None:
+            if os.environ.get("SOL_PI_REQUIRE_HERMES") == "1":
+                self.fail("hermes_cli is required by SOL_PI_REQUIRE_HERMES=1")
+            self.skipTest("hermes_cli not importable")
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as site:
+            dist = Path(site) / "sol_pi_hermes-0.0.dist-info"
+            dist.mkdir()
+            (dist / "METADATA").write_text("Metadata-Version: 2.1\nName: sol-pi-hermes\nVersion: 0.0\n")
+            (dist / "entry_points.txt").write_text(f"[hermes_agent.plugins]\nsol-pi = {target}\n")
+            run = subprocess.run(
+                [sys.executable, "-c",
+                 "from hermes_cli.plugins_discovery import discover_entrypoint_manifests as d;"
+                 "print([(m.name, m.source, m.path) for m in d()])"],
+                capture_output=True, text=True, timeout=120,
+                cwd=Path(host.origin).parents[1],  # host root holds sibling modules
+                env={**os.environ, "HERMES_HOME": home,
+                     "PYTHONPATH": os.pathsep.join([site, str(ROOT)])},
+            )
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn(f"('sol-pi', 'entrypoint', '{target}')", run.stdout)
 
     def test_no_typescript_imports(self) -> None:
         for path in ROOT.rglob("*.py"):
