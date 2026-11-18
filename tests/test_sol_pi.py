@@ -130,6 +130,24 @@ class OccTests(unittest.TestCase):
         gate.on_plan_boundary()
         self.assertFalse(gate.on_agent_settled())
 
+    def test_settle_consumes_pending_boundary(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        gate.on_plan_boundary()
+        self.assertTrue(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "compact_via_builtin_compressor")
+        self.assertFalse(gate.should_compact())
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "no_pending_boundary")
+
+    def test_disabled_reason(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        gate.on_plan_boundary()
+        self.assertEqual(gate.last_reason, "disabled")
+        gate.last_reason = ""
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "disabled")
+        self.assertFalse(gate.should_compact())
+
 
 class EprTests(unittest.TestCase):
     def test_secrets_are_not_reduced(self) -> None:
