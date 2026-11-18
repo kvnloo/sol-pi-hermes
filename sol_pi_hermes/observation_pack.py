@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,21 +163,34 @@ def ensure_stored(observation: Observation) -> None:
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     if directory.is_symlink() or not directory.is_dir():
         raise OSError(f"Observation directory is not a regular directory for {observation.id}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    # Publish only complete objects. A short write or interrupted writer must
+    # never expose a truncated archive to projection or a concurrent reader.
+    fd, temporary_name = tempfile.mkstemp(prefix=".observation-", dir=directory)
+    temporary = Path(temporary_name)
     try:
-        fd = os.open(observation.file_path, flags, 0o600)
         try:
-            os.write(fd, observation.text.encode("utf-8"))
+            remaining = memoryview(observation.text.encode("utf-8"))
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("Observation write made no progress")
+                remaining = remaining[written:]
         finally:
             os.close(fd)
-    except FileExistsError:
-        existing = observation.file_path.read_bytes()
-        if not observation.file_path.is_file() or observation.file_path.is_symlink():
-            raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
-        if len(existing) != observation.bytes:
-            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
-        if hash_text(existing) != observation.content_hash:
-            raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+        try:
+            # Same-directory hard linking is atomic and never replaces an
+            # existing object (including one published by a concurrent writer).
+            os.link(temporary, observation.file_path)
+        except FileExistsError:
+            if not observation.file_path.is_file() or observation.file_path.is_symlink():
+                raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
+            existing = observation.file_path.read_bytes()
+            if len(existing) != observation.bytes:
+                raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+            if hash_text(existing) != observation.content_hash:
+                raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _complete_line_excerpt(text: str, budget_bytes: int, from_end: bool) -> str:

@@ -50,3 +50,15 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Observation archive publication
+
+New observation objects are written completely to a private 0600 temporary file,
+then published with an atomic, no-replace hard link in the same directory.
+Short writes are retried; zero-progress or failed writes do not expose a partial
+object. An existing object must still match its expected bytes and hash.
+If the filesystem cannot create hard links or the archive write fails, packing
+fails open and retains the full tool result. Normal failures remove temporary
+files; process termination can leave unpublished `.observation-*` files. This
+provides atomic visibility, not an fsync/power-loss durability guarantee. Ledger
+behavior and pre-existing archive permissions are unchanged.
