@@ -57,10 +57,13 @@ class PackagingTests(unittest.TestCase):
         return project["entry-points"]["hermes_agent.plugins"]["sol-pi"]
 
     def test_entry_point_declared_and_resolves_to_register(self) -> None:
-        # Hermes does ep.load() then getattr(obj, "register"), so a
-        # "module:register" value (a function) would silently not register.
-        ep = importlib.metadata.EntryPoint("sol-pi", self._declared_entry_point(), "hermes_agent.plugins")
-        self.assertTrue(callable(getattr(ep.load(), "register", None)))
+        # Mirrors the host (plugins_loader): ep.load() yields either a module
+        # (use its .register) or, for "module:function", the function itself.
+        from sol_pi_hermes.plugin import register
+
+        loaded = importlib.metadata.EntryPoint(
+            "sol-pi", self._declared_entry_point(), "hermes_agent.plugins").load()
+        self.assertIs(loaded if callable(loaded) else getattr(loaded, "register", None), register)
 
     def test_installed_entry_point_is_discovered_by_hermes(self) -> None:
         # Runs Hermes's own discovery; needs the interpreter to be the host's
