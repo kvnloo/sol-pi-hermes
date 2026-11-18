@@ -49,6 +49,14 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(result['control_units'], result['control_bytes'])
         self.assertEqual(result['recalled_observations'], 1)
 
+    def test_default_estimate_is_ceil_of_unicode_chars_over_four(self):
+        source = [{'role': 'tool', 'name': 't', 'tool_call_id': 'x', 'content': '測定🙂a'}]
+        text = observation_pack.wire({'messages': source})
+        row = measure(source, requests=1)['requests'][0]
+        self.assertNotEqual(len(text) % 4, 0)
+        self.assertNotEqual(len(text), len(text.encode()))
+        self.assertEqual(row['control_units'], -(-len(text) // 4))
+
     def test_recall_can_outweigh_gross_savings(self):
         result = measure(fixtures()['large_ascii'], requests=3)
         self.assertLess(result['net_saved_units_after_one_full_recall_response'], 0)
