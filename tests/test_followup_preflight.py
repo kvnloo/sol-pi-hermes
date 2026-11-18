@@ -14,7 +14,7 @@ class Context:
 
 class FollowupPreflightTests(unittest.TestCase):
     def test_invalid_followup_refused_before_any_mutation(self):
-        specs=[[], 'echo bad', False, {}, {'command':None}, {'command':1}, {'command':''}, {'command':'  '}]
+        specs=[[], 'echo bad', False, {}, {'command':None}, {'command':1}, {'command':''}, {'command':'  '}, {'command':'\0'}, {'command':'printf ok\0'}]
         specs += [{'command':'synthetic','timeout':v} for v in (-1,False,'1',float('inf'),float('nan'),10**1000)]
         for name in ('sol_pi_write','sol_pi_patch'):
             for spec in specs:
