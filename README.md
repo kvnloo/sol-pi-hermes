@@ -50,3 +50,13 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Failed tool observations
+
+ObservationPack preserves explicit failed JSON tool-result envelopes in full,
+including a nonempty top-level `error`, `success: false`, or a nonzero integer
+`exit_code`. Hermes may put these fields inside content without a message-level
+`isError` flag. These results are not archived, counted or replaced by a
+placeholder. Successful/unstructured output remains eligible; nested data fields
+are not interpreted as failure signals. Wrapped or non-JSON error prose is not
+heuristically classified. This deliberately trades savings for visible diagnostics.

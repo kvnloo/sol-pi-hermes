@@ -138,6 +138,18 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     size = utf8_len(text)
     if size <= THRESHOLD_BYTES:
         return None
+    # Hermes tool errors are JSON envelopes in content, not necessarily
+    # message-level isError flags. Keep explicit failures visible in full.
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        payload = None
+    if isinstance(payload, dict) and (
+        payload.get("error")
+        or payload.get("success") is False
+        or (type(payload.get("exit_code")) is int and payload["exit_code"] != 0)
+    ):
+        return None
     if not str(runtime_root):
         raise ValueError("Persistent SoL-Pi runtime directory is unavailable")
     content_hash = hash_text(text)
