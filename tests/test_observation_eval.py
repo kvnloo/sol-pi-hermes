@@ -303,6 +303,18 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertFalse(any(c["control_unchanged"] for c in json.loads(out.getvalue())["cases"]))
         self.assertEqual(exit_code, 1)
 
+    def test_missing_required_fields_raise_named_value_errors(self):
+        for key in ("host_main_sha", "provenance"):
+            bad = _fixture_set()
+            del bad[key]
+            with self.assertRaisesRegex(ValueError, key):
+                evaluate_recordings(bad)
+        for key in ("name", "capture", "control", "tool_call_id"):
+            case = copy.deepcopy(_fixture_set()["cases"][0])
+            del case[key]
+            with self.assertRaisesRegex(ValueError, key):
+                evaluate_fixture(case)
+
     def test_invalid_recordings_are_rejected(self):
         bad_schema = {**_fixture_set(), "schema_version": 2}
         with self.assertRaises(ValueError):

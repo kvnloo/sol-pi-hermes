@@ -116,6 +116,9 @@ def evaluate_fixture(
     clock: Callable[[], int] = time.perf_counter_ns,
 ) -> dict[str, Any]:
     """Compare three provider sends; first two must remain the original control."""
+    absent = [k for k in ("name", "capture", "control", "tool_call_id") if k not in fixture]
+    if absent:
+        raise ValueError(f"fixture missing required field(s): {', '.join(absent)}")
     capture = fixture["capture"]
     if not isinstance(capture, dict) or not isinstance(capture.get("elements"), list):
         raise ValueError("capture must be a CaptureResult-shaped object with elements")
@@ -225,6 +228,9 @@ def evaluate_recordings(
 ) -> dict[str, Any]:
     if recordings.get("schema_version") != 1 or not isinstance(recordings.get("cases"), list):
         raise ValueError("expected schema_version=1 and cases array")
+    missing = [key for key in ("host_main_sha", "provenance") if key not in recordings]
+    if missing:
+        raise ValueError(f"recordings missing required field(s): {', '.join(missing)}")
     if not recordings["cases"]:
         raise ValueError("cases must contain at least one fixture")
     cases = [evaluate_fixture(case, clock=clock) for case in recordings["cases"]]
