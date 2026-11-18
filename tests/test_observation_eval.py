@@ -507,5 +507,16 @@ class ObservationShadowTests(unittest.TestCase):
                     observation_eval._recall_exact_text(Path("."), "obs_x")
 
 
+class MalformedElementTests(unittest.TestCase):
+    def test_non_dict_capture_elements_are_skipped_when_collecting_tokens(self):
+        base = _fixture_set()["cases"][0]
+        fixture = copy.deepcopy(base)
+        fixture["capture"]["elements"] += ["junk", None, 7]
+        expected = evaluate_fixture(base, clock=_deterministic_clock())["captured_element_tokens"]
+        case = evaluate_fixture(fixture, clock=_deterministic_clock())
+        self.assertGreater(expected, 0)
+        self.assertEqual(case["captured_element_tokens"], expected)
+
+
 if __name__ == "__main__":
     unittest.main()
