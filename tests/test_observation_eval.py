@@ -403,6 +403,8 @@ class ObservationShadowTests(unittest.TestCase):
             ({"error": "gone"}, "gone"),
             ({"content": "no header", "eof": True, "next_offset": 0}, "malformed"),
             ({"content": "h1\nh2\nbody", "eof": False, "next_offset": 0}, "advance"),
+            ({"content": "h1\nh2\nbody", "eof": False, "next_offset": None}, "advance"),
+            ({"content": "h1\nh2\nbody", "eof": False, "next_offset": "9"}, "advance"),
         ):
             with self.subTest(message=message), mock.patch.object(
                 observation_eval, "recall",
