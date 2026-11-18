@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib
+import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -114,6 +116,20 @@ class PluginContractTests(unittest.TestCase):
                     self.assertTrue(callable(handler))
                 for callback in ctx.middleware.values():
                     self.assertTrue(callable(callback))
+
+    def test_host_style_register_without_config_reads_sol_pi_json(self) -> None:
+        # register() called with no config argument: flags must come from the real config file.
+        for raw, expected in (
+            (None, {"obs_recall"}),
+            ({"version": 1, "actionFusion": True}, {"obs_recall", "sol_pi_write", "sol_pi_patch"}),
+        ):
+            with self.subTest(raw=raw), tempfile.TemporaryDirectory() as home:
+                if raw is not None:
+                    (Path(home) / "sol-pi.json").write_text(json.dumps(raw), encoding="utf-8")
+                ctx = RecordingContext()
+                with patch("sol_pi_hermes.config._hermes_home", return_value=Path(home)):
+                    implementation_register(ctx)
+                self.assertEqual(set(ctx.tools), expected)
 
     def test_observation_pack_flag_gates_projection_not_middleware_registration(self) -> None:
         disabled = RecordingContext()
