@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from sol_pi_hermes.observation_pack import read_recall_chunk
+import json
+from sol_pi_hermes.observation_pack import ledger_path, observation_path, read_recall_chunk, recall
 
 class RecallDescriptorTests(unittest.TestCase):
     def setUp(self):
@@ -75,3 +76,35 @@ class RecallDescriptorTests(unittest.TestCase):
             with self.assertRaises(OSError):self.read()
         self.assertEqual(len(opened),1)
         with self.assertRaises(OSError):os.fstat(opened[0])
+
+
+class RecallEndToEndTests(unittest.TestCase):
+    def test_recall_swapped_symlink_returns_error_without_outside_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "rt"
+            obs_id = "obs_" + "a" * 24
+            path = observation_path(root, obs_id)
+            path.parent.mkdir(parents=True)
+            path.write_text("archive")
+            outside = Path(tmp) / "outside"
+            outside.write_text("synthetic outside sentinel")
+            real_open, real_path_open, swaps = os.open, Path.open, []
+
+            def swap(p):
+                if Path(p) == path and not swaps:
+                    path.unlink(); path.symlink_to(outside); swaps.append(1)
+
+            def swapped_open(p, *args, **kw):
+                swap(p)
+                return real_open(p, *args, **kw)
+
+            def swapped_path_open(p, *args, **kw):
+                swap(p)
+                return real_path_open(p, *args, **kw)
+
+            with patch("os.open", swapped_open), patch.object(Path, "open", swapped_path_open):
+                result = recall(root, obs_id)
+            self.assertNotIn("synthetic outside sentinel", result)
+            self.assertTrue(swaps)
+            self.assertIn("error", json.loads(result))
+            self.assertFalse(ledger_path(root).exists())
