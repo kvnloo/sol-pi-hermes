@@ -117,6 +117,19 @@ class PluginContractTests(unittest.TestCase):
                 for callback in ctx.middleware.values():
                     self.assertTrue(callable(callback))
 
+    def test_manifest_schema_versions_and_ci_workflow_are_pinned(self) -> None:
+        manifest = (ROOT / "plugin.yaml").read_text(encoding="utf-8")
+        self.assertRegex(manifest, r"(?m)^manifest_version: 2$")
+        self.assertRegex(manifest, r"(?m)^api_version: 1$")
+        workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertRegex(workflow, r"(?m)^  pull_request:\s*$")
+        self.assertRegex(workflow, r"(?m)^  push:\n    branches:\n      - main$")
+        self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
+        versions = re.search(r"python-version: \[([^\]]*)\]", workflow)
+        self.assertIsNotNone(versions)
+        self.assertLessEqual({"3.10", "3.11", "3.12"}, set(re.findall(r"[\d.]+", versions[1])))
+        self.assertRegex(workflow, r"(?m)^        run: python -m unittest discover -s tests$")
+
     def test_host_style_register_without_config_reads_sol_pi_json(self) -> None:
         # register() called with no config argument: flags must come from the real config file.
         for raw, expected in (
