@@ -1,8 +1,11 @@
 import copy
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 from pathlib import Path
+from sol_pi_hermes.config import SolPiConfig
 from sol_pi_hermes.observation_pack import project_messages
+from sol_pi_hermes.plugin import register
 
 
 class RichTextPreservationTests(unittest.TestCase):
@@ -56,3 +59,23 @@ class RichTextPreservationTests(unittest.TestCase):
                     self.assertEqual(project_messages([message], Path(tmp), counts), [message])
                 self.assertEqual(counts, {})
                 self.assertEqual(list(Path(tmp).rglob('*')), [])
+
+
+class RegisteredMiddlewareTests(unittest.TestCase):
+    def test_llm_request_handler_packs_plain_but_keeps_rich(self):
+        rich = {'role': 'tool', 'content': [{'type': 'text', 'text': 'y' * 16000, 'citations': [1]}]}
+        plain = {'role': 'tool', 'content': 'x' * 16000}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch('sol_pi_hermes.config._hermes_home', return_value=Path(tmp)):
+            ctx = MagicMock()
+            register(ctx, SolPiConfig(observation_pack=True))
+            handler = ctx.register_middleware.call_args.args[1]
+            for _ in range(2):  # positive control: plain result packs on the third send
+                self.assertIsNone(handler(request={'messages': [plain]}, session_id='plain'))
+            packed = handler(request={'messages': [plain]}, session_id='plain')
+            self.assertIn('[large tool result replaced', packed['request']['messages'][0]['content'])
+            self.assertTrue((Path(tmp) / 'sol-pi' / 'plain').is_dir())
+            before = sorted(Path(tmp).rglob('*'))
+            for _ in range(3):
+                self.assertIsNone(handler(request={'messages': [rich]}, session_id='rich'))
+            self.assertEqual(sorted(Path(tmp).rglob('*')), before)
