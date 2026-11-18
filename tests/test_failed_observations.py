@@ -18,7 +18,7 @@ class FailedObservationTests(unittest.TestCase):
                     self.assertEqual(list(root.iterdir()),[])
 
     def test_success_and_unstructured_controls_still_pack(self):
-        payloads=[{'exit_code':0,'error':None}, {'exit_code':True}, {'success':True}, {'nested':{'error':'a data field'}}]
+        payloads=[{'exit_code':0,'error':None}, {'error':''}, {'success':0}, {'exit_code':True}, {'success':True}, {'nested':{'error':'a data field'}}]
         texts=[json.dumps({'output':'data line\n'*1500,**p}) for p in payloads]+['plain data\n'*1500, json.dumps(['error','data line\n'*1500])]
         for text in texts:
             with self.subTest(prefix=text[:50]),tempfile.TemporaryDirectory() as tmp:
