@@ -67,3 +67,12 @@ structured content is rejected, never coerced into an empty-file write. An
 explicit empty string remains a valid deliberate write. Hermes advertises plugin
 schemas but does not apply its built-in required-argument checks to plugins, so
 this boundary is enforced by the plugin itself.
+
+Fused follow-up specifications are checked before either write or patch is
+attempted. A provided `then_run` must contain a nonblank string `command` and,
+when supplied, a finite non-negative numeric `timeout` (not a boolean). Timeout
+0 retains Hermes's default-timeout behavior. Omitted/null `then_run` retains the
+existing mutation-only behavior; omitted/null timeout uses the host default.
+Malformed specifications return an error without attempting either nested tool.
+This preflight does not guarantee that a valid command will succeed or provide
+rollback if a later backend operation fails.

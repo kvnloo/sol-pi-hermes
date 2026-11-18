@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,7 +17,7 @@ THEN_RUN_SCHEMA = {
     "type": "object",
     "properties": {
         "command": {"type": "string", "description": "Shell command to run after the mutation succeeds"},
-        "timeout": {"type": "number", "description": "Timeout in seconds (optional)"},
+        "timeout": {"type": "number", "minimum": 0, "description": "Finite non-negative timeout in seconds (optional; 0 uses the host default)"},
     },
     "required": ["command"],
 }
@@ -94,6 +95,17 @@ def execute_mutation_then_run(
     then_run: dict[str, Any] | None,
     run_command: Callable[[str, float | None], str],
 ) -> str:
+    if then_run is not None:
+        valid = isinstance(then_run, dict) and isinstance(then_run.get("command"), str) and bool(then_run["command"].strip())
+        if valid and then_run.get("timeout") is not None:
+            timeout = then_run["timeout"]
+            try:
+                valid = type(timeout) in (int, float) and timeout >= 0 and math.isfinite(timeout)
+            except OverflowError:
+                valid = False
+        if not valid:
+            return json.dumps({"error": "Invalid then_run: require a nonempty string command and finite non-negative numeric timeout; no mutation was attempted.",
+                               "then_run": THEN_RUN_SKIPPED})
     try:
         mutation_result = mutate()
     except Exception as exc:

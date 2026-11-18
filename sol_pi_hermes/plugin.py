@@ -95,7 +95,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
             absolute_path=None,
-            then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
+            then_run=args.get("then_run"),
             run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
@@ -113,7 +113,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
             absolute_path=None,
-            then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
+            then_run=args.get("then_run"),
             run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
