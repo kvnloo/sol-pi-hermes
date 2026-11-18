@@ -175,6 +175,26 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(all(s["byte_exact_recall"] is not False for c in cases for s in c["sends"]))
         self.assertEqual(exit_code, 1)
 
+    def test_cli_fails_when_projection_packs_on_the_last_full_send(self):
+        from unittest import mock
+        from sol_pi_hermes import observation_eval
+
+        real = observation_eval.project_request
+        calls = {"n": 0}
+
+        def premature_on_second_send(request, root, counts):
+            calls["n"] += 1
+            if calls["n"] % (observation_eval.FULL_SENDS + 1) == observation_eval.FULL_SENDS:
+                real(request, root, counts)  # advance the count early on the final full send only
+            return real(request, root, counts)
+
+        with mock.patch.object(observation_eval, "project_request", premature_on_second_send), redirect_stdout(StringIO()) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        sends = json.loads(out.getvalue())["cases"][0]["sends"]
+        self.assertFalse(sends[0]["packed"])
+        self.assertTrue(sends[observation_eval.FULL_SENDS - 1]["packed"])
+        self.assertEqual(exit_code, 1)
+
     def test_cli_fails_when_projection_mutates_the_control(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval
