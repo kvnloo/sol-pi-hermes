@@ -109,8 +109,20 @@ def execute_mutation_then_run(
         return mutation_result if isinstance(mutation_result, str) else json.dumps({"result": mutation_result})
 
     failure = _reported_failure(mutation_result)
-    if failure:
-        return json.dumps({"mutation": mutation_result, "then_run": THEN_RUN_SKIPPED, "error": failure})
+    try:
+        payload = json.loads(mutation_result)
+    except (TypeError, ValueError):
+        payload = None
+    # Hermes PatchResult reports success; WriteResult reports bytes_written.
+    # Absence of an error alone is not proof that a mutation completed.
+    confirmed = isinstance(payload, dict) and (
+        payload.get("success") is True
+        or ("success" not in payload and type(payload.get("bytes_written")) is int
+            and payload["bytes_written"] >= 0)
+    )
+    if failure or not confirmed:
+        return json.dumps({"mutation": mutation_result, "then_run": THEN_RUN_SKIPPED,
+                           "error": failure or "File mutation success was not confirmed; the command was not run."})
 
     try:
         # Only callers with a verified host-local target may enable this guard.

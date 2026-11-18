@@ -63,14 +63,14 @@ class ReviewSafetyTests(unittest.TestCase):
     def test_returned_terminal_failures_are_not_success(self):
         for payload in ({'error': 'denied'}, {'success': False}, {'exit_code': 1}):
             with self.subTest(payload=payload):
-                result = json.loads(execute_mutation_then_run(mutate=lambda: '{}', absolute_path=None,
+                result = json.loads(execute_mutation_then_run(mutate=lambda: '{"success":true}', absolute_path=None,
                     then_run={'command': 'fixture'}, run_command=lambda *_: json.dumps(payload)))
                 self.assertEqual(result['then_run'], '[then_run:failed]')
 
     def test_background_or_incomplete_result_is_unknown(self):
         for payload in ({'session_id': 'job', 'status': 'running'}, {'exit_code': None}, {}, None, [], 'plain output', {'exit_code': False}):
             with self.subTest(payload=payload):
-                result = json.loads(execute_mutation_then_run(mutate=lambda: '{}', absolute_path=None,
+                result = json.loads(execute_mutation_then_run(mutate=lambda: '{"success":true}', absolute_path=None,
                     then_run={'command': 'fixture'}, run_command=lambda *_: json.dumps(payload)))
                 self.assertEqual(result['then_run'], '[then_run:unknown]')
 

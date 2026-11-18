@@ -171,7 +171,7 @@ class FusionTests(unittest.TestCase):
             path.write_text("print(1)\n", encoding="utf-8")
 
             def mutate() -> str:
-                return "wrote"
+                return json.dumps({"bytes_written": 9})
 
             out = json.loads(
                 execute_mutation_then_run(

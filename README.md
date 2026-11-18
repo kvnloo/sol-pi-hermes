@@ -50,3 +50,13 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+### Fused command admission
+
+A fused follow-up command requires an affirmative mutation result: Hermes patch
+results report `success: true`; write results report a nonnegative integer
+`bytes_written` (including a successful empty write). Reported errors override
+these fields. Missing, malformed, pending or unknown results skip the command
+and preserve the mutation response for inspection. The mutation may already
+have happened; a skipped follow-up is not a rollback. Calls without `then_run`
+still return the original mutation result unchanged.
