@@ -140,6 +140,18 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(any(s["byte_exact_recall"] is False for c in report["cases"] for s in c["sends"]))
         self.assertEqual(exit_code, 1)
 
+    def test_cli_fails_on_lost_field_even_when_recall_is_byte_exact(self):
+        with mock.patch.object(observation_eval, "_missing_fields", return_value=["app"]), redirect_stdout(
+            StringIO()
+        ) as out:
+            exit_code = main(["--fixtures", str(DEFAULT_FIXTURES)])
+        report = json.loads(out.getvalue())
+        self.assertIn("app", report["totals"]["lost_fields_after_recall"])
+        self.assertTrue(
+            all(s["byte_exact_recall"] is not False for c in report["cases"] for s in c["sends"])
+        )
+        self.assertEqual(exit_code, 1)
+
     def test_cli_fails_when_recall_loses_a_field(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval
