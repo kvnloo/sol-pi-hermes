@@ -125,6 +125,21 @@ class SharedPolicyLoaderTests(unittest.TestCase):
                 with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                     load_sol_pi_config(raw={"version": 1, key: value})
 
+    def test_valid_operator_values_are_carried_through(self) -> None:
+        cfg = load_sol_pi_config(raw={
+            "version": 1, "actionFusion": False, "observationPack": True,
+            "evidencePreservingReducer": True, "onlineContextCompact": False,
+            "evidencePreservingReducerProvider": "prov-x",
+            "evidencePreservingReducerModel": "model-y", "cacheWriteReadRatio": 3})
+        self.assertFalse(cfg.action_fusion)
+        self.assertTrue(cfg.observation_pack)
+        self.assertTrue(cfg.evidence_preserving_reducer)
+        self.assertFalse(cfg.online_context_compact)
+        self.assertEqual((cfg.evidence_preserving_reducer_provider,
+                          cfg.evidence_preserving_reducer_model), ("prov-x", "model-y"))
+        self.assertEqual(cfg.cache_write_read_ratio, 3.0)
+        self.assertIsInstance(cfg.cache_write_read_ratio, float)
+
 
 if __name__ == "__main__":
     unittest.main()
