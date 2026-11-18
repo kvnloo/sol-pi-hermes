@@ -76,7 +76,10 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     def obs_recall(args: dict, **kwargs: Any) -> str:
         if _session_id(**kwargs) is None:
             return json.dumps({"error": "ObservationPack requires a host session_id or task_id"})
-        return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
+        offset = args.get("offset", 0)
+        if type(offset) is not int or offset < 0:
+            return json.dumps({"error": "ObservationPack offset must be a non-negative integer"})
+        return recall(root_for(**kwargs), str(args.get("id") or ""), offset)
 
     def _run_terminal(command: str, timeout: float | None, context: dict[str, Any]) -> str:
         payload: dict[str, Any] = {"command": command}
