@@ -7,10 +7,12 @@ import itertools
 import json
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
+from sol_pi_hermes import observation_eval
 from sol_pi_hermes.observation_eval import (
     DEFAULT_FIXTURES,
     evaluate_fixture,
@@ -232,6 +234,19 @@ class ObservationShadowTests(unittest.TestCase):
             len(json.dumps(blocks, ensure_ascii=False, sort_keys=True).encode("utf-8")),
         )
         self.assertEqual(image["sends"][0]["before_bytes"], image["sends"][0]["after_bytes"])
+
+    def test_recall_reassembly_rejects_error_malformed_and_stalled_pages(self):
+        for reply, message in (
+            ({"error": "gone"}, "gone"),
+            ({"content": "no header", "eof": True, "next_offset": 0}, "malformed"),
+            ({"content": "h1\nh2\nbody", "eof": False, "next_offset": 0}, "advance"),
+        ):
+            with self.subTest(message=message), mock.patch.object(
+                observation_eval, "recall",
+                side_effect=[json.dumps(reply), AssertionError("recall looped")],
+            ):
+                with self.assertRaisesRegex(ValueError, message):
+                    observation_eval._recall_exact_text(Path("."), "obs_x")
 
 
 if __name__ == "__main__":
