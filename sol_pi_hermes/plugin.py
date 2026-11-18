@@ -80,8 +80,6 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
         def mutate() -> str:
             return str(ctx.dispatch_tool("write_file", {"path": str(path), "content": content}, **context))
 
-        if not cfg.action_fusion:
-            return mutate()
         return execute_mutation_then_run(
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
@@ -98,8 +96,6 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             payload = {k: v for k, v in args.items() if k != "then_run"}
             return str(ctx.dispatch_tool("patch", payload, **context))
 
-        if not cfg.action_fusion:
-            return mutate()
         return execute_mutation_then_run(
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
