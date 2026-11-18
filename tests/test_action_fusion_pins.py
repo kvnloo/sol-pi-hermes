@@ -7,6 +7,7 @@ from sol_pi_hermes.action_fusion import (
     THEN_RUN_FAILED,
     THEN_RUN_SKIPPED,
     THEN_RUN_SUCCEEDED,
+    THEN_RUN_UNKNOWN,
     assert_unchanged_before_command,
     file_sha256,
     execute_mutation_then_run,
@@ -35,6 +36,13 @@ class ActionFusionPins(unittest.TestCase):
         self.assertEqual(out["then_run"], THEN_RUN_SUCCEEDED)
 
 
+    def test_exit_code_classification(self):
+        # A negative code is still a failure.
+        negative = run(then_run={"command": "x"}, output=json.dumps({"exit_code": -9}))
+        self.assertEqual(negative["then_run"], THEN_RUN_FAILED)
+        # JSON true is not an integer exit code: it must not be read as exit 1.
+        boolean = run(then_run={"command": "x"}, output=json.dumps({"exit_code": True}))
+        self.assertEqual(boolean["then_run"], THEN_RUN_UNKNOWN)
 
     def test_non_string_mutation_result_is_wrapped_as_json(self):
         raw = execute_mutation_then_run(
