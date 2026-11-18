@@ -40,3 +40,15 @@ class RecallProgressTests(unittest.TestCase):
                 self.assertEqual(result['bytes'], 0)
                 self.assertEqual(result['nextOffset'], len(body))
                 self.assertTrue(result['eof'])
+
+    def test_offset_inside_utf8_character_or_invalid_bytes_is_error_without_ledger(self):
+        for body, offset in (('a😀b'.encode() * 5000, 2), (b'\xff\xfe' + b'x' * 50000, 0)):
+            with self.subTest(offset=offset), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                obs = create_observation({'role': 'tool', 'content': 'x' * 20000}, root)
+                ensure_stored(obs)
+                obs.file_path.write_bytes(body)
+                result = json.loads(recall(root, obs.id, offset))
+                self.assertIn('error', result)
+                self.assertNotIn('next_offset', result)
+                self.assertFalse((root / 'observation-pack' / 'ledger.jsonl').exists())
