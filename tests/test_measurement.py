@@ -102,3 +102,16 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
         self.assertIn('cannot load requested tokenizer', err.getvalue())
         self.assertEqual(out.getvalue(), '')
+
+    def test_named_tokenizer_counts_and_label_reach_output(self):
+        fake = mock.Mock()
+        fake.get_encoding.return_value.encode.side_effect = lambda text, **kw: [0] * 7
+        out = io.StringIO()
+        with mock.patch.dict(sys.modules, {'tiktoken': fake}), \
+                mock.patch.object(sys, 'argv', ['x', '--encoding', 'cl100k_base', '--requests', '2']), \
+                contextlib.redirect_stdout(out):
+            main()
+        fake.get_encoding.assert_called_once_with('cl100k_base')
+        small = json.loads(out.getvalue())['small_control']
+        self.assertEqual(small['counter'], 'tiktoken:cl100k_base:serialized_request_not_billing')
+        self.assertEqual(small['control_units'], 14)
