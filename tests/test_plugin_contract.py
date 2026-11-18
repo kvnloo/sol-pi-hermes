@@ -128,6 +128,8 @@ class PluginContractTests(unittest.TestCase):
         versions = re.search(r"python-version: \[([^\]]*)\]", workflow)
         self.assertIsNotNone(versions)
         self.assertLessEqual({"3.10", "3.11", "3.12"}, set(re.findall(r"[\d.]+", versions[1])))
+        # Without these the installed-wheel test skips silently on every CI leg.
+        self.assertRegex(workflow, r"(?m)^        run: python -m pip install setuptools wheel$")
         self.assertRegex(workflow, r"(?m)^        run: python -m unittest discover -s tests$")
 
     def test_host_style_register_without_config_reads_sol_pi_json(self) -> None:
