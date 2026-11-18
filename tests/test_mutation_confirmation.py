@@ -36,11 +36,13 @@ class MutationConfirmationTests(unittest.TestCase):
                 self.assertEqual(result['then_run'], '[then_run:skipped]')
 
     def test_nonzero_exit_code_overrides_success(self):
-        calls = []
-        result = json.loads(execute_mutation_then_run(mutate=lambda:'{"success":true,"exit_code":1}', absolute_path=None,
-            then_run={'command':'never'}, run_command=lambda *a:calls.append(a) or '{}'))
-        self.assertEqual(calls, [])
-        self.assertEqual(result['then_run'], '[then_run:skipped]')
+        for code in (1, -1):
+            with self.subTest(code=code):
+                calls = []
+                result = json.loads(execute_mutation_then_run(mutate=lambda:json.dumps({'success':True,'exit_code':code}), absolute_path=None,
+                    then_run={'command':'never'}, run_command=lambda *a:calls.append(a) or '{}'))
+                self.assertEqual(calls, [])
+                self.assertEqual(result['then_run'], '[then_run:skipped]')
 
     def test_reported_error_overrides_success(self):
         result = json.loads(execute_mutation_then_run(mutate=lambda:'{"success":true,"error":"denied"}', absolute_path=None,

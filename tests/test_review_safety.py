@@ -61,7 +61,7 @@ class ReviewSafetyTests(unittest.TestCase):
                 self.assertEqual(result['then_run'], '[then_run:skipped]')
 
     def test_returned_terminal_failures_are_not_success(self):
-        for payload in ({'error': 'denied'}, {'success': False}, {'exit_code': 1}):
+        for payload in ({'error': 'denied'}, {'success': False}, {'exit_code': 1}, {'exit_code': -1}, {'exit_code': -9}):
             with self.subTest(payload=payload):
                 result = json.loads(execute_mutation_then_run(mutate=lambda: '{"success":true}', absolute_path=None,
                     then_run={'command': 'fixture'}, run_command=lambda *_: json.dumps(payload)))
