@@ -13,6 +13,27 @@ from sol_pi_hermes.observation_pack import (
 
 
 class LedgerLockFailureTests(unittest.TestCase):
+    def test_lock_retry_budget_matches_documented_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.fcntl.flock',
+                       side_effect=BlockingIOError) as flock, \
+                 patch('sol_pi_hermes.observation_pack.time.sleep') as sleep:
+                append_ledger(root, {'event': 'busy'})
+            self.assertEqual(flock.call_count, 50)
+            self.assertEqual({c.args for c in sleep.call_args_list}, {(0.002,)})
+            self.assertEqual(ledger_path(root).read_bytes(), b'')
+
+    def test_lock_acquired_after_contention_writes_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch('sol_pi_hermes.observation_pack.fcntl.flock',
+                       side_effect=[BlockingIOError, BlockingIOError, None]) as flock, \
+                 patch('sol_pi_hermes.observation_pack.time.sleep'):
+                append_ledger(root, {'event': 'late'})
+            self.assertEqual(flock.call_count, 3)
+            self.assertEqual(json.loads(ledger_path(root).read_text())['event'], 'late')
+
     def test_unavailable_lock_never_starts_a_short_write(self):
         real_write = os.write
         with tempfile.TemporaryDirectory() as tmp:
