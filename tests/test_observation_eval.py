@@ -207,6 +207,18 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("app", json.loads(out.getvalue())["totals"]["lost_fields_after_recall"])
         self.assertEqual(exit_code, 1)
 
+    def test_changed_capture_without_observation_id_is_a_named_error(self):
+        fixture = next(f for f in _fixture_set()["cases"] if f["name"] == "large_tree")
+
+        def stripped(request, root, counts):
+            changed = copy.deepcopy(request)
+            changed["messages"][0]["content"] = "no archive header"
+            return {"request": changed}
+
+        with mock.patch.object(observation_eval, "project_request", stripped):
+            with self.assertRaisesRegex(ValueError, "large_tree: changed capture lacks an observation id"):
+                evaluate_fixture(fixture, clock=_deterministic_clock())
+
     def test_cli_fails_when_projection_packs_before_full_sends(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval
