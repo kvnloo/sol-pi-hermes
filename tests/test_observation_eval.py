@@ -111,6 +111,25 @@ class ObservationShadowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_fixture(malformed, clock=_deterministic_clock())
 
+    def test_report_totals_and_provenance_match_per_send_rows(self):
+        frozen = _fixture_set()
+        report = evaluate_recordings(frozen, clock=_deterministic_clock())
+        rows = [send for case in report["cases"] for send in case["sends"]]
+        totals = report["totals"]
+
+        self.assertEqual(report["fixture_provenance"], frozen["provenance"])
+        self.assertEqual(totals["before_bytes"], sum(r["before_bytes"] for r in rows))
+        self.assertEqual(totals["after_bytes"], sum(r["after_bytes"] for r in rows))
+        self.assertLess(totals["after_bytes"], totals["before_bytes"])
+        self.assertEqual(totals["projection_latency_ns"], sum(r["latency_ns"] for r in rows))
+        self.assertGreater(totals["projection_latency_ns"], 0)
+
+    def test_nonempty_non_list_cases_rejected_as_malformed_schema(self):
+        fixtures = _fixture_set()
+        fixtures["cases"] = {"name": "not-a-list"}
+        with self.assertRaisesRegex(ValueError, "cases array"):
+            evaluate_recordings(fixtures, clock=_deterministic_clock())
+
     def test_cli_rejects_empty_replay_without_writing_success_report(self):
         import subprocess
         import sys
