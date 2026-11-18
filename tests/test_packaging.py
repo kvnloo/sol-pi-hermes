@@ -65,7 +65,7 @@ class PackagingTests(unittest.TestCase):
             "sol-pi", self._declared_entry_point(), "hermes_agent.plugins").load()
         self.assertIs(loaded if callable(loaded) else getattr(loaded, "register", None), register)
 
-    def _run_in_host(self, code: str, enable: bool = False) -> str:
+    def _run_in_host(self, code: str, enable: bool = False, sol_pi_config: str | None = None) -> str:
         # Runs `code` under Hermes's own interpreter with a fake dist-info on a temp
         # path and a temp HERMES_HOME, so no real Hermes environment is modified.
         target = self._declared_entry_point()
@@ -79,6 +79,8 @@ class PackagingTests(unittest.TestCase):
             dist.mkdir()
             (dist / "METADATA").write_text("Metadata-Version: 2.1\nName: sol-pi-hermes\nVersion: 0.0\n")
             (dist / "entry_points.txt").write_text(f"[hermes_agent.plugins]\nsol-pi = {target}\n")
+            if sol_pi_config:
+                (Path(home) / "sol-pi.json").write_text(sol_pi_config)
             if enable:
                 (Path(home) / "config.yaml").write_text("plugins:\n  enabled: [sol-pi]\n")
             run = subprocess.run(
@@ -110,6 +112,16 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("LOADED True None", out)
         self.assertIn("MW 1", out)
         self.assertIn("TOOLS ['obs_recall']", out)
+
+    def test_entry_point_plugin_registers_fusion_tools_when_enabled(self) -> None:
+        out = self._run_in_host(
+            "from hermes_cli.plugins import get_plugin_manager as g;"
+            "m = g(); m.discover_and_load(); p = m._plugins.get('sol-pi');"
+            "print('LOADED', bool(p and p.enabled), p and p.error);"
+            "print('TOOLS', sorted(getattr(p, 'tools_registered', []) or []))",
+            enable=True, sol_pi_config='{"actionFusion": true}')
+        self.assertIn("LOADED True None", out)
+        self.assertIn("TOOLS ['obs_recall', 'sol_pi_patch', 'sol_pi_write']", out)
 
     def test_no_typescript_imports(self) -> None:
         for path in ROOT.rglob("*.py"):
