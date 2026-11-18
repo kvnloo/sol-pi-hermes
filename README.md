@@ -76,3 +76,10 @@ existing mutation-only behavior; omitted/null timeout uses the host default.
 Malformed specifications return an error without attempting either nested tool.
 This preflight does not guarantee that a valid command will succeed or provide
 rollback if a later backend operation fails.
+
+Action Fusion rejects an actual NUL character in `then_run.command` before any
+mutation or nested command dispatch. Native command spawning cannot accept that
+argument, so discovering it after a successful write/patch would create an
+avoidable partial action. Literal backslash-zero, Unicode and newlines remain
+unchanged. This is argument validation, not shell-command safety analysis or a
+promise that valid commands will succeed or that failed checks roll back edits.
