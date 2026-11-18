@@ -323,6 +323,13 @@ class ObservationShadowTests(unittest.TestCase):
         )
         self.assertEqual(image["sends"][0]["before_bytes"], image["sends"][0]["after_bytes"])
 
+    def test_multimodal_wire_bytes_count_non_ascii_text_unescaped(self):
+        fixture = copy.deepcopy(next(c for c in _fixture_set()["cases"] if c["name"] == "multimodal"))
+        fixture["control"]["content_blocks"] = [{"type": "text", "text": "caf\u00e9"}]
+        send = evaluate_fixture(fixture, clock=_deterministic_clock())["sends"][0]
+        # Hand-computed UTF-8 length of [{"text": "café", "type": "text"}] (no \u escapes).
+        self.assertEqual(send["before_bytes"], 35)
+
     def test_control_indices_and_visible_element_tokens_are_reported(self):
         fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "stale"))
         token = fixture["capture"]["elements"][0]["element_token"]
