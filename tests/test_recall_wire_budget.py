@@ -6,7 +6,7 @@ from sol_pi_hermes.observation_pack import RECALL_MAX_BYTES,create_observation,e
 
 class RecallWireBudgetTests(unittest.TestCase):
     def test_serialized_pages_fit_and_reconstruct_exactly(self):
-        for text in ('😀'*10000, '\x00'*20000, '\\"'*12000, 'plain ASCII '*3000):
+        for text in ('😀'*10000, '\x00'*20000, '\\"'*12000, 'plain ASCII '*3000, 'a\x01é\t€\x1f😀"\\'*3500):
             with self.subTest(text_prefix=repr(text[:10])), tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp)
                 obs=create_observation({'role':'tool','content':text},root)
