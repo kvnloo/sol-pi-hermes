@@ -69,3 +69,11 @@ This avoids unnecessary duplicate writes and allows reuse when temporary-file
 creation fails. New objects still require atomic publication; corrupt existing
 objects are rejected rather than overwritten. Ledger I/O remains separate, so
 this does not promise that packing works on a wholly unwritable filesystem.
+
+Existing ObservationPack archives are validated through one nonblocking file
+descriptor: regular-file identity and expected size are checked before a bounded
+content/hash read. Path replacement and FIFO substitution are rejected rather
+than reopening an unchecked path. Platforms without nonblocking file opens
+refuse archive reuse, leaving projection unchanged through the existing
+fail-open path. This is not a sandbox against hostile parent directories or
+in-place modification after validation, nor a durability guarantee.

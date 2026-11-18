@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -159,9 +160,26 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
 
 
 def _validate_stored(observation: Observation) -> None:
-    if not observation.file_path.is_file() or observation.file_path.is_symlink():
+    before = observation.file_path.lstat()
+    if not stat.S_ISREG(before.st_mode):
         raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
-    existing = observation.file_path.read_bytes()
+    # Refuse platforms without nonblocking open rather than risk hanging on a
+    # FIFO substituted between lstat and open. NOFOLLOW is additional defense;
+    # descriptor identity checks still reject symlink targets without that flag.
+    if not hasattr(os, "O_NONBLOCK"):
+        raise OSError("Safe nonblocking archive validation is unavailable")
+    fd = os.open(observation.file_path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise OSError(f"Content-addressed observation changed during validation for {observation.id}")
+        if opened.st_size != observation.bytes:
+            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            # Bound reads even if a concurrent writer grows the same inode.
+            existing = stream.read(observation.bytes + 1)
+    finally:
+        os.close(fd)
     if len(existing) != observation.bytes:
         raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
     if hash_text(existing) != observation.content_hash:
