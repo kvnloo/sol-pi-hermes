@@ -67,6 +67,10 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, out)
         self.assertIn("Validation passed", out)
         self.assertNotIn("\u2717", out)
+        # Pin that validate really checks the declared llm_request middleware
+        # and hooks, so a Hermes that stops checking them cannot pass silently.
+        for check in ("declared middleware", "declared hooks", "capability probe"):
+            self.assertRegex(out, "\u2713 " + check)
         # Action Fusion is off by default, so the default probe legitimately
         # omits its tools; any *other* warning is a real manifest mismatch.
         for line in out.splitlines():
