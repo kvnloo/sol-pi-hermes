@@ -209,6 +209,25 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("app", json.loads(out.getvalue())["totals"]["lost_fields_after_recall"])
         self.assertEqual(exit_code, 1)
 
+    def test_non_object_json_control_reports_content_lost_after_recall(self):
+        case = copy.deepcopy(_fixture_set()["cases"][0])
+        text = json.dumps([case["control"]["text_payload"]])
+        case["control"] = {"content_blocks": [{"type": "text", "text": text}]}
+        for label, recalled in (("not json", "}{"), ("other json", "{}"), ("other array", "[1]")):
+            with self.subTest(label), mock.patch.object(
+                observation_eval, "_recall_exact_text", return_value=recalled
+            ):
+                third = evaluate_fixture(case, clock=_deterministic_clock())["sends"][2]
+                self.assertTrue(third["packed"])
+                self.assertIs(third["byte_exact_recall"], False)
+                self.assertEqual(third["lost_fields_after_recall"], ["<content>"])
+
+    def test_object_control_recalled_as_non_object_reports_content_lost(self):
+        case = _fixture_set()["cases"][0]
+        with mock.patch.object(observation_eval, "_recall_exact_text", return_value="[1]"):
+            third = evaluate_fixture(case, clock=_deterministic_clock())["sends"][2]
+        self.assertEqual(third["lost_fields_after_recall"], ["<content>"])
+
     def test_control_with_neither_payload_form_is_a_named_error(self):
         # Distinct from the top-level required keys: control present but empty.
         fixture = copy.deepcopy(_fixture_set()["cases"][0])
