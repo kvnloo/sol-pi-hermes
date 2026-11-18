@@ -19,6 +19,16 @@ class RecallLedgerFailOpenTests(unittest.TestCase):
             self.assertIn("payload", result["content"])
             self.assertFalse(target.exists())
 
+    def test_unwritable_ledger_does_not_fail_successful_recall(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            observation = create_observation({"role": "tool", "content": "payload\n" * 3000}, root)
+            ensure_stored(observation)
+            ledger_path(root).mkdir()  # open(2) on a directory raises IsADirectoryError
+            result = json.loads(recall(root, observation.id))
+            self.assertNotIn("error", result)
+            self.assertIn("payload", result["content"])
+
 
 if __name__ == "__main__":
     unittest.main()
