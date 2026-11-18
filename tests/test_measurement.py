@@ -115,3 +115,25 @@ class MeasurementTests(unittest.TestCase):
         small = json.loads(out.getvalue())['small_control']
         self.assertEqual(small['counter'], 'tiktoken:cl100k_base:serialized_request_not_billing')
         self.assertEqual(small['control_units'], 14)
+
+    def test_projection_mutating_source_transcript_is_rejected(self):
+        real = observation_pack.project_request
+        def mutate(source, root, sent):
+            source['messages'][0]['content'] = 'tampered'
+            return real(source, root, sent)
+        with mock.patch.object(observation_pack, 'project_request', mutate):
+            with self.assertRaisesRegex(AssertionError, 'mutated the source transcript'):
+                measure(fixtures()['large_ascii'])
+
+    def test_unknown_named_tokenizer_fails_without_estimate_fallback(self):
+        fake = mock.Mock()
+        fake.get_encoding.side_effect = ValueError('Unknown encoding nope')
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(sys.modules, {'tiktoken': fake}), \
+                mock.patch.object(sys, 'argv', ['x', '--encoding', 'nope']), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn('cannot load requested tokenizer', err.getvalue())
+        self.assertEqual(out.getvalue(), '')
