@@ -354,6 +354,24 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertLess(case["saved_bytes"], 0)
         self.assertLess(case["saved_estimated_text_tokens"], 0)
 
+    def test_report_carries_capture_mode_and_rejects_malformed_control_shapes(self):
+        report = evaluate_recordings(_fixture_set(), clock=_deterministic_clock())
+        modes = {case["name"]: case["mode"] for case in report["cases"]}
+        self.assertEqual(modes["large_tree"], "ax")
+        self.assertEqual(modes["multimodal"], "som")
+
+        base = _fixture_set()["cases"][0]
+        for control in (
+            ["text_payload"],
+            {"text_payload": []},
+            {"content_blocks": {}},
+        ):
+            bad = {**base, "control": control}
+            with self.subTest(control=control), self.assertRaises(ValueError):
+                evaluate_fixture(bad, clock=_deterministic_clock())
+
+        self.assertEqual(observation_eval._missing_fields("not json", "changed"), ["<content>"])
+
     def test_backwards_clock_never_yields_negative_latency(self):
         ticks = itertools.count(10_000, -100).__next__
         case = evaluate_fixture(_fixture_set()["cases"][0], clock=ticks)
