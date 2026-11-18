@@ -321,6 +321,24 @@ class ObservationShadowTests(unittest.TestCase):
         for send in case["sends"]:
             self.assertEqual(send["retained_element_tokens"], [token])
 
+    def test_empty_element_token_is_not_reported_as_a_retained_token(self):
+        fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "stale"))
+        fixture["capture"]["elements"][0]["element_token"] = ""
+        case = evaluate_fixture(fixture, clock=_deterministic_clock())
+        self.assertNotIn("", case["control_element_tokens"])
+        for send in case["sends"]:
+            self.assertNotIn("", send["retained_element_tokens"])
+
+    def test_changed_field_value_counts_as_lost_not_only_removed_keys(self):
+        lost = observation_eval._missing_fields(
+            '{"a": 1, "b": 2, "c": 3}', '{"a": 1, "b": 99}')
+        self.assertEqual(lost, ["b", "c"])
+
+    def test_backwards_clock_never_yields_negative_latency(self):
+        ticks = itertools.count(10_000, -100).__next__
+        case = evaluate_fixture(_fixture_set()["cases"][0], clock=ticks)
+        self.assertTrue(all(send["latency_ns"] == 0 for send in case["sends"]))
+
     def test_packed_send_reports_no_retained_element_tokens(self):
         fixture = copy.deepcopy(next(x for x in _fixture_set()["cases"] if x["name"] == "large_tree"))
         fixture["capture"]["elements"][0]["element_token"] = "tok_abc"
