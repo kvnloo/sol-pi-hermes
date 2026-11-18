@@ -52,3 +52,5 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+ObservationPack requires a nonempty host-provided session ID (or task ID fallback). Without one, request projection returns the full unchanged observation without archiving it, and recall returns an identity error. An explicit session named `default` remains valid but is never an anonymous fallback. These identifiers must come from the trusted host callback, not tool arguments.

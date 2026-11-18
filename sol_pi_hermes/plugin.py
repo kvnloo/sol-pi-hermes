@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -33,8 +34,13 @@ OBS_RECALL_SCHEMA = {
 }
 
 
-def _session_id(**kwargs: Any) -> str:
-    return str(kwargs.get("session_id") or kwargs.get("task_id") or "default")
+def _session_id(**kwargs: Any) -> str | None:
+    # Never map missing host context to a real session named "default".
+    for key in ("session_id", "task_id"):
+        value = kwargs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _tool_context(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -54,6 +60,8 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
 
     def root_for(**kwargs: Any) -> Path:
         sid = _session_id(**kwargs)
+        if sid is None:
+            raise ValueError("ObservationPack requires a host session_id or task_id")
         if sid not in roots:
             roots[sid] = runtime_root_for_session(sid)
         return roots[sid]
@@ -61,9 +69,13 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     def on_llm_request(request=None, **kwargs: Any):
         if not cfg.observation_pack or not isinstance(request, dict):
             return None
+        if _session_id(**kwargs) is None:
+            return None  # Preserve the full observation; do not persist it unscoped.
         return project_request(request, root_for(**kwargs), sent_counts)
 
     def obs_recall(args: dict, **kwargs: Any) -> str:
+        if _session_id(**kwargs) is None:
+            return json.dumps({"error": "ObservationPack requires a host session_id or task_id"})
         return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
 
     def _run_terminal(command: str, timeout: float | None, context: dict[str, Any]) -> str:
