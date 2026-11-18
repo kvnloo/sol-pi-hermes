@@ -61,6 +61,22 @@ class MutationConfirmationTests(unittest.TestCase):
             then_run={'command':'never'}, run_command=lambda *_:self.fail('unexpected command')))
         self.assertEqual(result['then_run'], '[then_run:skipped]')
 
+    def test_reported_failure_text_is_surfaced_not_generic(self):
+        cases = [({'success':True,'exit_code':3}, 'Command exited with code 3'),
+                 ({'bytes_written':3,'error':'disk full'}, 'disk full'),
+                 ({'success':False,'message':'no match'}, 'no match')]
+        for payload, expected in cases:
+            with self.subTest(payload=payload):
+                result = json.loads(execute_mutation_then_run(mutate=lambda:json.dumps(payload), absolute_path=None,
+                    then_run={'command':'never'}, run_command=lambda *_:self.fail('unexpected command')))
+                self.assertEqual(result['error'], expected)
+                self.assertEqual(result['then_run'], '[then_run:skipped]')
+
+    def test_unconfirmed_result_without_failure_gets_generic_error(self):
+        result = json.loads(execute_mutation_then_run(mutate=lambda:'{}', absolute_path=None,
+            then_run={'command':'never'}, run_command=lambda *_:self.fail('unexpected command')))
+        self.assertIn('not confirmed', result['error'])
+
     def test_no_followup_preserves_unknown_result(self):
         self.assertEqual(execute_mutation_then_run(mutate=lambda:'unknown', absolute_path=None,
             then_run=None, run_command=lambda *_:self.fail('unexpected command')), 'unknown')
