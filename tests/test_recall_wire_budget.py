@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from sol_pi_hermes.observation_pack import RECALL_MAX_BYTES,create_observation,ensure_stored,recall
+from sol_pi_hermes.observation_pack import RECALL_MAX_BYTES,create_observation,ensure_stored,ledger_path,recall
 
 class RecallWireBudgetTests(unittest.TestCase):
     def test_serialized_pages_fit_and_reconstruct_exactly(self):
@@ -26,3 +26,16 @@ class RecallWireBudgetTests(unittest.TestCase):
                     offset=page['next_offset']
                 else:self.fail('pagination did not terminate')
                 self.assertEqual(''.join(parts),text)
+
+    def test_shrunk_page_writes_one_matching_ledger_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            obs=create_observation({'role':'tool','content':'\x00'*20000},root)
+            ensure_stored(obs)
+            page=json.loads(recall(root,obs.id,0))
+            recs=[json.loads(l) for l in ledger_path(root).read_text().splitlines()]
+            recs=[r for r in recs if r.get('event')=='recall']
+            self.assertEqual(len(recs),1)
+            r=recs[0]
+            self.assertEqual((r['bytes'],r['nextOffset'],r['eof'],r['lines']),(page['bytes'],page['next_offset'],page['eof'],page['lines']))
+            self.assertLess(page['bytes'],20000)
