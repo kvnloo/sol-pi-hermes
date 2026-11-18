@@ -61,3 +61,23 @@ class RichTextShadowGateTests(unittest.TestCase):
                     code, case = self.run_case([{'type': 'text', 'text': 'x' * 16000}, bad])
                 self.assertFalse(case['non_text_content_unchanged'])
                 self.assertEqual(code, 1)
+
+    def test_cli_allows_pure_text_blocks_that_pack_with_exact_recall(self):
+        code, case = self.run_case([{'type': 'text', 'text': 'x' * 16000}])
+        self.assertTrue(case['sends'][2]['packed'])
+        self.assertTrue(case['sends'][2]['byte_exact_recall'])
+        self.assertTrue(case['non_text_content_unchanged'])
+        self.assertEqual(code, 0)
+
+    def test_non_text_typed_block_with_text_key_requires_passthrough(self):
+        # Same key set as a text block, so only the type check separates them.
+        real = observation_eval.project_request
+        def pack_text_only(request, root, counts):
+            stripped = copy.deepcopy(request)
+            stripped['messages'][0]['content'] = [{'type': 'text', 'text': 'x' * 16000}]
+            return real(stripped, root, counts)
+        with mock.patch.object(observation_eval, 'project_request', pack_text_only):
+            code, case = self.run_case([{'type': 'image', 'text': 'x' * 16000}])
+        self.assertTrue(case['sends'][2]['packed'])
+        self.assertFalse(case['non_text_content_unchanged'])
+        self.assertEqual(code, 1)
