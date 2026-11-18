@@ -65,6 +65,18 @@ class MeasurementTests(unittest.TestCase):
         result = measure(fixtures()['large_ascii'], requests=3)
         self.assertLess(result['net_saved_units_after_one_full_recall_response'], 0)
 
+    def test_wire_serialization_is_pinned(self):
+        self.assertEqual(observation_pack.wire({'b': '測', 'a': [1, None]}), '{"a":[1,null],"b":"測"}')
+
+    def test_transcript_unchanged_flag_reports_mutation_after_projection(self):
+        source = fixtures()['large_ascii']
+        real = observation_pack.recall
+        def mutate(*a):
+            source[0]['content'] = 'tampered'
+            return real(*a)
+        with mock.patch.object(observation_pack, 'recall', mutate):
+            self.assertFalse(measure(source)['transcript_unchanged'])
+
     def test_invalid_request_count(self):
         with self.assertRaises(ValueError):
             measure([], requests=0)
