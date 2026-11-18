@@ -39,3 +39,14 @@ class FollowupPreflightTests(unittest.TestCase):
             result=json.loads(ctx.tools['sol_pi_write']({'path':'target','content':'','then_run':spec}))
             self.assertEqual(ctx.calls[-1],('terminal',spec))
             self.assertEqual(result['then_run'],'[then_run:succeeded]')
+
+
+class FollowupSchemaTests(unittest.TestCase):
+    def test_registered_timeout_schema_matches_preflight(self):
+        schemas = {}
+        ctx = Context()
+        ctx.register_tool = lambda **kw: schemas.__setitem__(kw['name'], kw['schema'])
+        register(ctx, SolPiConfig(action_fusion=True))
+        for name in ('sol_pi_write', 'sol_pi_patch'):
+            timeout = schemas[name]['parameters']['properties']['then_run']['properties']['timeout']
+            self.assertEqual((timeout.get('type'), timeout.get('minimum')), ('number', 0))
