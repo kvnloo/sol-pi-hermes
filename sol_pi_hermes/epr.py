@@ -42,10 +42,10 @@ def should_reduce(body: str, command: str) -> bool:
 
 
 def quote_verify(receipt_quotes: list[str], archive_body: str) -> bool:
-    """Every quoted line must appear byte-for-byte in the archive."""
+    """Every quote must be non-blank and appear byte-for-byte in the archive."""
     if not receipt_quotes:
         return False
-    return all(quote in archive_body for quote in receipt_quotes)
+    return all(quote.strip() and quote in archive_body for quote in receipt_quotes)
 
 
 def apply_receipt(command: str, archive_hash: str, quotes: list[str], notes: str) -> str:

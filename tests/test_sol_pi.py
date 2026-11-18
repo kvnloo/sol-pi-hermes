@@ -140,6 +140,17 @@ class EprTests(unittest.TestCase):
     def test_quote_verify_fail_open(self) -> None:
         self.assertFalse(quote_verify(["missing"], "log"))
         self.assertTrue(quote_verify(["error: boom"], "error: boom\nrest"))
+        for blank in ("", "  ", "\n"):
+            self.assertFalse(quote_verify([blank], "error: boom\n"))
+            self.assertFalse(quote_verify(["error: boom", blank], "error: boom\n"))
+        self.assertIsNone(
+            transform_if_reduced(
+                tool_name="terminal",
+                args={"command": "cargo test"},
+                result="error: boom\n" * 500,
+                reducer=lambda **_: {"quotes": [""], "notes": "no evidence"},
+            )
+        )
         self.assertIsNone(
             transform_if_reduced(
                 tool_name="terminal",
