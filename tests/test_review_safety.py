@@ -103,6 +103,18 @@ class ReviewSafetyTests(unittest.TestCase):
                 append_ledger(root, {'event': 'never'})
             self.assertEqual(target.read_text(), 'unchanged')
 
+    def test_ledger_o_nofollow_blocks_symlink_when_precheck_is_raced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / 'target'
+            target.write_text('unchanged')
+            path = ledger_path(root)
+            path.parent.mkdir()
+            path.symlink_to(target)
+            with patch.object(Path, 'is_symlink', return_value=False), self.assertRaises(OSError):
+                append_ledger(root, {'event': 'never'})
+            self.assertEqual(target.read_text(), 'unchanged')
+
     def test_ledger_append_after_torn_tail_keeps_new_record_whole(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
