@@ -1,5 +1,6 @@
 import json
 import unittest
+from sol_pi_hermes.action_fusion import THEN_RUN_SKIPPED
 from sol_pi_hermes.plugin import register
 from sol_pi_hermes.config import SolPiConfig
 
@@ -22,6 +23,7 @@ class FollowupPreflightTests(unittest.TestCase):
                     out=json.loads(ctx.tools[name]({'path':'target','content':'safe','then_run':spec}))
                     self.assertEqual(ctx.calls,[])
                     self.assertIn('error',out)
+                    self.assertEqual(out['then_run'],THEN_RUN_SKIPPED)
 
     def test_omitted_or_null_followup_keeps_mutation_only(self):
         for extra in ({},{'then_run':None}):
