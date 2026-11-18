@@ -125,6 +125,17 @@ class SharedPolicyLoaderTests(unittest.TestCase):
                 with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                     load_sol_pi_config(raw={"version": 1, key: value})
 
+    def test_malformed_or_non_object_policy_is_rejected(self) -> None:
+        for payload in ("{bad", "", "[]", "null", '"x"', "0"):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as temp:
+                home = Path(temp)
+                (home / "sol-pi.json").write_text(payload, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "JSON object|Unable to read"):
+                    load_sol_pi_config(hermes_home=home)
+        for value in ([], [1], 0, "x"):
+            with self.subTest(raw=value), self.assertRaisesRegex(ValueError, "JSON object"):
+                load_sol_pi_config(raw=value)
+
     def test_valid_operator_values_are_carried_through(self) -> None:
         cfg = load_sol_pi_config(raw={
             "version": 1, "actionFusion": False, "observationPack": True,
