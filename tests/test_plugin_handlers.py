@@ -110,17 +110,20 @@ class PluginHandlerTests(unittest.TestCase):
                 ],
             )
 
-    def test_non_dict_then_run_is_ignored_and_returns_the_mutation_result(self) -> None:
-        # Pins current behaviour (malformed then_run silently dropped); reporting it instead is the owner's call.
+    def test_omitted_or_null_then_run_returns_only_the_mutation_result(self) -> None:
+        # Omission/null mean no follow-up. Malformed values are a separate
+        # preflight-refusal contract covered by Draft #15; never pin their
+        # silent removal (which would permit an unintended mutation).
         with tempfile.TemporaryDirectory() as tmp:
             ctx, _ = self._register(tmp, action_fusion=True)
-            for bad in ("true", ["true"]):
-                ctx.dispatched.clear()
-                out_w = ctx.tools["sol_pi_write"]({"path": "/a", "content": "c", "then_run": bad})
-                out_p = ctx.tools["sol_pi_patch"]({"path": "/a", "old_string": "x", "new_string": "y", "then_run": bad})
-                self.assertEqual(out_w, '{"success": true}')
-                self.assertEqual(out_p, '{"success": true}')
-                self.assertEqual([n for n, _, _ in ctx.dispatched], ["write_file", "patch"])
+            for optional in ({}, {"then_run": None}):
+                with self.subTest(optional=optional):
+                    ctx.dispatched.clear()
+                    out_w = ctx.tools["sol_pi_write"]({"path": "/a", "content": "c", **optional})
+                    out_p = ctx.tools["sol_pi_patch"]({"path": "/a", "old_string": "x", "new_string": "y", **optional})
+                    self.assertEqual(out_w, '{"success": true}')
+                    self.assertEqual(out_p, '{"success": true}')
+                    self.assertEqual([n for n, _, _ in ctx.dispatched], ["write_file", "patch"])
 
 
 if __name__ == "__main__":
