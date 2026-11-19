@@ -40,6 +40,13 @@ class FollowupPreflightTests(unittest.TestCase):
             self.assertEqual(ctx.calls[-1],('terminal',spec))
             self.assertEqual(result['then_run'],'[then_run:succeeded]')
 
+    def test_explicit_null_timeout_is_accepted_as_host_default(self):
+        ctx=Context();register(ctx,SolPiConfig(action_fusion=True))
+        spec={'command':'echo synthetic','timeout':None}
+        result=json.loads(ctx.tools['sol_pi_write']({'path':'target','content':'','then_run':spec}))
+        self.assertEqual(result['then_run'],'[then_run:succeeded]')
+        self.assertEqual(ctx.calls[-1],('terminal',{'command':'echo synthetic'}))
+
 
 class FollowupSchemaTests(unittest.TestCase):
     def test_registered_timeout_schema_matches_preflight(self):
