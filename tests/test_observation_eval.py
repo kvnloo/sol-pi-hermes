@@ -58,6 +58,18 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("elements", got["visible_missing_fields"])
         self.assertEqual(got["visible_missing_fields"], want["visible_missing_fields"])
 
+    def test_content_blocks_control_is_copied_not_aliased_from_fixture(self):
+        multimodal = {f["name"]: f for f in _fixture_set()["cases"]}["multimodal"]
+        before = copy.deepcopy(multimodal)
+
+        def scribble(request, root, sent_counts):
+            request["messages"][0]["content"][0]["scribble"] = True
+            return None
+
+        with mock.patch.object(observation_eval, "project_request", scribble):
+            evaluate_fixture(multimodal, clock=_deterministic_clock())
+        self.assertEqual(multimodal, before)
+
     def test_large_tree_and_repeated_hide_structured_fields_but_recall_exactly(self):
         fixtures = {f["name"]: f for f in _fixture_set()["cases"]}
         for name in ("large_tree", "repeated"):
