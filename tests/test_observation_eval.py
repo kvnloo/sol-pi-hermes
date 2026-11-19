@@ -535,6 +535,12 @@ class ObservationShadowTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     observation_eval._recall_exact_text(Path("."), "obs_x")
 
+    def test_recall_page_with_a_single_header_line_is_malformed(self):
+        reply = {"content": "h1\nbody", "eof": True, "next_offset": 0}
+        with mock.patch.object(observation_eval, "recall", return_value=json.dumps(reply)):
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                observation_eval._recall_exact_text(Path("."), "obs_x")
+
 
 class MalformedElementTests(unittest.TestCase):
     def test_non_dict_capture_elements_are_skipped_when_collecting_tokens(self):
@@ -545,6 +551,30 @@ class MalformedElementTests(unittest.TestCase):
         case = evaluate_fixture(fixture, clock=_deterministic_clock())
         self.assertGreater(expected, 0)
         self.assertEqual(case["captured_element_tokens"], expected)
+
+
+class ReportShapeTests(unittest.TestCase):
+    def _case(self, **over):
+        tokens = ["tok_%s" % c for c in "zqmawxbk"]
+        case = {
+            "name": "n",
+            "tool_call_id": "t",
+            "capture": {"elements": [{"element_token": t} for t in tokens]},
+            "control": {"text_payload": {"tokens": tokens}},
+        }
+        case.update(over)
+        return case, sorted(tokens)
+
+    def test_element_tokens_are_reported_sorted(self):
+        case, expected = self._case()
+        report = evaluate_fixture(case, clock=_deterministic_clock())
+        self.assertEqual(report["control_element_tokens"], expected)
+        self.assertEqual(report["sends"][0]["retained_element_tokens"], expected)
+
+    def test_truthy_non_string_name_is_rejected(self):
+        case, _ = self._case(name=5)
+        with self.assertRaisesRegex(ValueError, "name must be nonempty"):
+            evaluate_fixture(case, clock=_deterministic_clock())
 
 
 if __name__ == "__main__":
