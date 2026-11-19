@@ -162,6 +162,24 @@ class ObservationShadowTests(unittest.TestCase):
             self.assertEqual(json.loads(out.getvalue()), json.loads(report_path.read_text()))
             self.assertEqual(json.loads(out.getvalue())["totals"]["lost_fields_after_recall"], [])
 
+    def test_cli_report_is_sorted_key_indented_and_file_matches_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = Path(tmp) / "report.json"
+            out = StringIO()
+            with redirect_stdout(out):
+                main(["--fixtures", str(DEFAULT_FIXTURES), "--output", str(report_path)])
+            text = out.getvalue()
+            canonical = json.dumps(json.loads(text), indent=2, sort_keys=True) + "\n"
+            self.assertEqual(text, canonical)
+            self.assertEqual(report_path.read_text(), canonical)
+
+    def test_rejects_wrong_schema_version_or_non_list_cases(self):
+        for bad in ({"schema_version": 2, "cases": []}, {"schema_version": 1, "cases": {}}):
+            with self.subTest(bad=bad), self.assertRaisesRegex(
+                ValueError, "expected schema_version=1 and cases array"
+            ):
+                evaluate_recordings(bad)
+
     def test_cli_fails_on_inexact_recall_even_when_no_field_is_lost(self):
         from unittest import mock
         from sol_pi_hermes import observation_eval
