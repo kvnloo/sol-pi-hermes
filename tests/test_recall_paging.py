@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from sol_pi_hermes.observation_pack import read_recall_chunk
+from sol_pi_hermes.observation_pack import THRESHOLD_BYTES, create_observation, read_recall_chunk
 
 
 def chunk(data, offset=0, max_bytes=100, max_lines=100):
@@ -53,6 +53,18 @@ class RecallPagingTests(unittest.TestCase):
                 break
         self.assertEqual(out.encode(), data)
         self.assertEqual(offset, len(data))
+
+
+    def test_offset_past_eof_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'exceeds'):
+            chunk(b'abc\n', offset=5)
+
+    def test_size_threshold_is_inclusive(self):
+        def msg(n):
+            return {'role': 'tool', 'name': 't', 'tool_call_id': 'c', 'content': 'x' * n}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(create_observation(msg(THRESHOLD_BYTES), Path(tmp)))
+            self.assertIsNotNone(create_observation(msg(THRESHOLD_BYTES + 1), Path(tmp)))
 
 
 if __name__ == '__main__':
