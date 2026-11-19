@@ -45,6 +45,29 @@ class ConfigPathTests(unittest.TestCase):
             self.assertEqual(find_config_path(cwd, home), glob)
             self.assertTrue(load_sol_pi_config(cwd, home).action_fusion)
 
+    def test_global_config_that_is_a_directory_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "sol-pi.json").mkdir()
+            self.assertIsNone(find_config_path(None, home))
+            self.assertEqual(load_sol_pi_config(None, home), SolPiConfig())
+
+    def test_home_falls_back_to_dot_hermes_outside_hermes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            glob = _write(Path(tmp) / ".hermes", "{}")
+            with mock.patch.dict("sys.modules", {"hermes_constants": None}), \
+                    mock.patch.object(Path, "home", return_value=Path(tmp)):
+                self.assertEqual(find_config_path(), glob)
+
+    def test_home_prefers_hermes_constants_when_available(self) -> None:
+        import types
+        with tempfile.TemporaryDirectory() as tmp:
+            glob = _write(Path(tmp) / "profile", "{}")
+            fake = types.SimpleNamespace(get_hermes_home=lambda: str(Path(tmp) / "profile"))
+            with mock.patch.dict("sys.modules", {"hermes_constants": fake}), \
+                    mock.patch.object(Path, "home", return_value=Path(tmp) / "nowhere"):
+                self.assertEqual(find_config_path(), glob)
+
     def test_unreadable_json_is_a_named_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
