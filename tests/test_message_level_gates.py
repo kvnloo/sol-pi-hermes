@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from sol_pi_hermes.observation_pack import (
-    is_pure_text_tool_result, project_messages, tool_call_id_of, tool_name_of)
+    THRESHOLD_BYTES, create_observation, is_pure_text_tool_result,
+    project_messages, tool_call_id_of, tool_name_of)
 
 BIG = 'data line\n' * 1500
 
@@ -52,6 +53,15 @@ class MessageLevelGateTests(unittest.TestCase):
             self.assertEqual(tool_call_id_of({key: 'x'}), 'x')
         self.assertEqual(tool_call_id_of({'tool_call_id': 'a', 'toolCallId': 'b', 'id': 'c'}), 'a')
         self.assertEqual(tool_call_id_of({'toolCallId': 'b', 'id': 'c'}), 'b')
+
+
+class SizeThresholdTests(unittest.TestCase):
+    def test_exactly_threshold_bytes_stays_inline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            at = {'role': 'tool', 'content': 'x' * THRESHOLD_BYTES}
+            over = {'role': 'tool', 'content': 'x' * (THRESHOLD_BYTES + 1)}
+            self.assertIsNone(create_observation(at, Path(tmp)))
+            self.assertEqual(create_observation(over, Path(tmp)).bytes, THRESHOLD_BYTES + 1)
 
 
 if __name__ == '__main__':
