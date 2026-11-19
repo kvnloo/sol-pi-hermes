@@ -104,3 +104,19 @@ class MutationConfirmationTests(unittest.TestCase):
             result = json.loads(ctx.tools[name]({'path':'synthetic.txt','content':'x','then_run':{'command':'never'}},task_id='synthetic'))
             self.assertEqual(ctx.calls,[expected])
             self.assertEqual(result['then_run'], '[then_run:skipped]')
+
+    def test_registered_patch_confirmed_forwards_args_without_then_run_then_runs_command(self):
+        class Context:
+            def __init__(self): self.tools = {}; self.calls = []
+            def register_tool(self, **kw): self.tools[kw['name']] = kw['handler']
+            def register_middleware(self, *args): pass
+            def dispatch_tool(self, name, args, **kw):
+                self.calls.append((name, args, kw))
+                return '{"success": true}' if name == 'patch' else '{"exit_code": 0}'
+        ctx = Context(); register(ctx, SolPiConfig(action_fusion=True))
+        ctx.tools['sol_pi_patch']({'path': 'a.txt', 'old_string': 'x', 'new_string': 'y',
+            'then_run': {'command': 'echo hi', 'timeout': 5}}, task_id='t1')
+        self.assertEqual(ctx.calls, [
+            ('patch', {'path': 'a.txt', 'old_string': 'x', 'new_string': 'y'}, {'task_id': 't1'}),
+            ('terminal', {'command': 'echo hi', 'timeout': 5}, {'task_id': 't1'}),
+        ])
