@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -91,6 +92,12 @@ def load_sol_pi_config(
     ratio = parsed.get("cacheWriteReadRatio", DEFAULT_CACHE_WRITE_READ_RATIO)
     if not isinstance(ratio, (int, float)) or isinstance(ratio, bool) or ratio < 0:
         raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number")
+    try:
+        ratio = float(ratio)
+    except OverflowError as exc:
+        raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number") from exc
+    if not isfinite(ratio):
+        raise ValueError("SoL-Pi config cacheWriteReadRatio must be a finite non-negative number")
 
     def _str(key: str, default: str) -> str:
         value = parsed.get(key, default)
@@ -110,5 +117,5 @@ def load_sol_pi_config(
             "evidencePreservingReducerProvider", DEFAULT_REDUCER_PROVIDER
         ),
         online_context_compact=_bool("onlineContextCompact"),
-        cache_write_read_ratio=float(ratio),
+        cache_write_read_ratio=ratio,
     )

@@ -145,9 +145,16 @@ class ConfigValidationTests(unittest.TestCase):
             cfg = load_sol_pi_config(raw={"version": 1, "cacheWriteReadRatio": good})
             self.assertEqual(cfg.cache_write_read_ratio, want)
             self.assertIsInstance(cfg.cache_write_read_ratio, float)
-        for bad in (-1, -0.5, True, False, "2", None):
+        for bad in (-1, -0.5, True, False, "2", None, float("nan"), float("inf"), 10**400):
             with self.assertRaisesRegex(ValueError, "cacheWriteReadRatio"):
                 load_sol_pi_config(raw={"version": 1, "cacheWriteReadRatio": bad})
+
+    def test_non_finite_ratio_in_a_real_file_is_rejected(self) -> None:
+        for literal in ("NaN", "Infinity", "1e999"):
+            with tempfile.TemporaryDirectory() as tmp:
+                _write(Path(tmp), '{"version": 1, "cacheWriteReadRatio": %s}' % literal)
+                with self.assertRaisesRegex(ValueError, "cacheWriteReadRatio"):
+                    load_sol_pi_config(None, Path(tmp))
 
 
 if __name__ == "__main__":
