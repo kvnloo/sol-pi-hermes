@@ -44,6 +44,13 @@ class ActionFusionPins(unittest.TestCase):
         boolean = run(then_run={"command": "x"}, output=json.dumps({"exit_code": True}))
         self.assertEqual(boolean["then_run"], THEN_RUN_UNKNOWN)
 
+    def test_output_without_integer_exit_code_is_unknown(self):
+        for output in ("plain text", "[1]", "{}", json.dumps({"exit_code": "0"})):
+            with self.subTest(output=output):
+                out = run(then_run={"command": "x"}, output=output)
+                self.assertEqual(out["then_run"], THEN_RUN_UNKNOWN)
+                self.assertEqual(out["output"], output)
+
     def test_non_string_mutation_result_is_wrapped_as_json(self):
         raw = execute_mutation_then_run(
             mutate=lambda: {"a": 1}, absolute_path=None, then_run=None, run_command=lambda c, t: "")
