@@ -58,6 +58,20 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertIn("elements", got["visible_missing_fields"])
         self.assertEqual(got["visible_missing_fields"], want["visible_missing_fields"])
 
+    def test_shadow_eval_never_touches_the_hermes_home(self):
+        with tempfile.TemporaryDirectory() as home:
+            hostile = Path(home) / ".hermes"
+            hostile.mkdir()
+            before = sorted(p.name for p in hostile.rglob("*"))
+            with mock.patch.object(Path, "home", return_value=Path(home)), mock.patch.dict(
+                "os.environ", {"HOME": home, "HERMES_HOME": str(hostile)}
+            ):
+                report = evaluate_recordings(_fixture_set(), clock=_deterministic_clock())
+            self.assertEqual(sorted(p.name for p in hostile.rglob("*")), before)
+        packed = {c["name"]: [s["packed"] for s in c["sends"]] for c in report["cases"]}
+        self.assertEqual(packed["large_tree"], [False, False, True])
+        self.assertEqual(packed["repeated"], [False, False, True])
+
     def test_content_blocks_control_is_copied_not_aliased_from_fixture(self):
         multimodal = {f["name"]: f for f in _fixture_set()["cases"]}["multimodal"]
         before = copy.deepcopy(multimodal)
