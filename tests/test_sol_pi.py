@@ -106,6 +106,13 @@ class ObservationPackTests(unittest.TestCase):
         head, tail = self._excerpts(huge + "mid\n" * 4000 + huge)
         self.assertEqual((head, tail), ("", ""))
 
+    def test_exactly_threshold_bytes_stays_inline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(create_observation(_big_tool("x" * THRESHOLD_BYTES), root))
+            over = create_observation(_big_tool("x" * (THRESHOLD_BYTES + 1)), root)
+            self.assertEqual(over.bytes, THRESHOLD_BYTES + 1)
+
     def test_reducer_receipt_is_not_packed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
