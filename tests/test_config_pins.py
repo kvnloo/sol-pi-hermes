@@ -93,6 +93,11 @@ class ConfigValidationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f"{key} must be a non-empty string"):
                     load_sol_pi_config(raw={"version": 1, key: bad})
 
+    def test_every_mechanism_is_off_by_default(self) -> None:
+        off = dict(action_fusion=False, observation_pack=False, evidence_preserving_reducer=False, online_context_compact=False)
+        for cfg in (SolPiConfig(), load_sol_pi_config(raw={}), load_sol_pi_config(raw={"version": 1})):
+            self.assertEqual({k: getattr(cfg, k) for k in off}, off)
+
     def test_cache_ratio_default_valid_and_invalid(self) -> None:
         self.assertEqual(load_sol_pi_config(raw={"version": 1}).cache_write_read_ratio, DEFAULT_CACHE_WRITE_READ_RATIO)
         for good, want in ((0, 0.0), (3, 3.0), (1.5, 1.5)):
