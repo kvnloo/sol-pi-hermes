@@ -58,6 +58,30 @@ class ActionFusionPins(unittest.TestCase):
         self.assertIn("disk full", with_cmd["error"])
         self.assertEqual(run(mutate=boom, then_run=None), {"error": "disk full"})
 
+    def test_reported_mutation_failure_text_reaches_the_error_field(self):
+        cases = [
+            ({"error": "disk full"}, "disk full"),
+            ({"error": 42}, "42"),
+            ({"success": False, "message": "patch rejected"}, "patch rejected"),
+            ({"exit_code": 3}, "Command exited with code 3"),
+        ]
+        for payload, expected in cases:
+            with self.subTest(payload=payload):
+                calls = []
+                out = run(mutate=lambda: json.dumps(payload), then_run={"command": "x"}, calls=calls)
+                self.assertEqual(calls, [])
+                self.assertEqual(out["then_run"], THEN_RUN_SKIPPED)
+                self.assertEqual(out["error"], expected)
+
+    def test_empty_error_field_is_not_a_reported_failure(self):
+        for empty in (None, ""):
+            with self.subTest(empty=empty):
+                calls = []
+                out = run(mutate=lambda: json.dumps({"error": empty, "success": True}),
+                          then_run={"command": "x"}, calls=calls)
+                self.assertEqual(calls, [("x", None)])
+                self.assertEqual(out["then_run"], THEN_RUN_SUCCEEDED)
+
     def test_unsuccessful_result_without_message_gets_default_error(self):
         out = run(mutate=lambda: json.dumps({"success": False}), then_run={"command": "x"})
         self.assertEqual(out["error"], "Tool reported an unsuccessful result")
