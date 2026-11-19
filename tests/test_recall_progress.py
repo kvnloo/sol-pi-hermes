@@ -52,3 +52,19 @@ class RecallProgressTests(unittest.TestCase):
                 self.assertIn('error', result)
                 self.assertNotIn('next_offset', result)
                 self.assertFalse((root / 'observation-pack' / 'ledger.jsonl').exists())
+
+
+class StaticNonRegularTests(unittest.TestCase):
+    def test_static_directory_and_symlink_are_file_not_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, 'target'); target.write_text('secret')
+            for name, make in (('dir', lambda p: p.mkdir()), ('link', lambda p: p.symlink_to(target))):
+                path = Path(tmp, name); make(path)
+                with self.subTest(kind=name), self.assertRaises(FileNotFoundError):
+                    read_recall_chunk(path, 0, max_bytes=100, max_lines=10)
+
+    def test_stall_one_byte_before_eof_is_no_progress_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, 'object'); path.write_bytes(b'ab')
+            with self.assertRaisesRegex(ValueError, 'no progress'):
+                read_recall_chunk(path, 1, max_bytes=0, max_lines=10)
