@@ -287,7 +287,7 @@ class ObservationShadowTests(unittest.TestCase):
         # Distinct from the top-level required keys: control present but empty.
         fixture = copy.deepcopy(_fixture_set()["cases"][0])
         fixture["control"] = {}
-        with self.assertRaisesRegex(ValueError, "exactly one of text_payload or content_blocks"):
+        with self.assertRaisesRegex(ValueError, "exactly one of text_payload, raw_text_payload or content_blocks"):
             evaluate_fixture(fixture, clock=_deterministic_clock())
 
     def test_report_states_shadow_method_and_token_estimator(self):

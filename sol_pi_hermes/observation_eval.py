@@ -32,8 +32,19 @@ def _control_content(fixture: Mapping[str, Any]) -> str | list[Any]:
     control = fixture["control"]
     if not isinstance(control, dict):
         raise ValueError("control must be a JSON object")
-    if ("text_payload" in control) == ("content_blocks" in control):
-        raise ValueError("control needs exactly one of text_payload or content_blocks")
+    forms = ("text_payload", "raw_text_payload", "content_blocks")
+    if sum(key in control for key in forms) != 1:
+        raise ValueError("control needs exactly one of text_payload, raw_text_payload or content_blocks")
+    if "raw_text_payload" in control:
+        raw = control["raw_text_payload"]
+        if not isinstance(raw, str):
+            raise ValueError("raw_text_payload must be a UTF-8 JSON object string")
+        # Validate without reserializing: whitespace, escapes and number spelling
+        # are part of the recorded string control and its byte/token estimates.
+        raw.encode("utf-8")
+        if not isinstance(json.loads(raw), dict):
+            raise ValueError("raw_text_payload must be a UTF-8 JSON object string")
+        return raw
     if "text_payload" in control:
         if not isinstance(control["text_payload"], dict):
             raise ValueError("text_payload must be a JSON object")

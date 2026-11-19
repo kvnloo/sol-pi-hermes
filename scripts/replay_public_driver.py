@@ -81,7 +81,7 @@ def main():
         }
         recordings = {'schema_version': 1, 'host_main_sha': HOST, 'provenance': provenance,
             'cases': [{'name': f'public-{args.kind}-density24-replay',
-                       'capture': dataclasses.asdict(cap), 'control': {'text_payload': control},
+                       'capture': dataclasses.asdict(cap), 'control': {'raw_text_payload': control_text},
                        'tool_call_id': 'offline-public-replay'}]}
         report = evaluator.evaluate_recordings(recordings)
         spill = control.get('elements_file')

@@ -44,3 +44,14 @@ and a full-label spill; this is host serialization, not Sol-Pi loss.
 
 No remote publication, catalog admission, policy settlement, or issue closure is
 implied. Real original paired-capture and semantic-equivalence gates remain open.
+
+The adapter supplies `control.raw_text_payload`: the exact UTF-8 JSON-object
+string returned by the pinned serializer, without parsing and reserializing the
+control before evaluation. Its whitespace, Unicode escapes and number spelling
+therefore contribute unchanged to byte/token estimates and recall comparison.
+Fixtures must select exactly one of `raw_text_payload` (a JSON-object string),
+legacy `text_payload` (an object serialized with `json.dumps` defaults), or
+`content_blocks` (a native block list). Existing fixture forms retain their
+behavior. This preserves an offline string representation, not proof that a
+provider received it, nor an original same-call capture or decision-equivalence
+claim. The parser still reads the control separately to locate its public spill.
