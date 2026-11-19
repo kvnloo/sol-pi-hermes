@@ -24,3 +24,9 @@ class FailedObservationTests(unittest.TestCase):
             with self.subTest(prefix=text[:50]),tempfile.TemporaryDirectory() as tmp:
                 source=[{'role':'tool','content':text},{'role':'assistant'},{'role':'assistant'}]
                 self.assertNotEqual(project_messages(source,Path(tmp),{}),source)
+
+    def test_deeply_nested_json_still_packs(self):
+        text = '[' * 200000
+        with tempfile.TemporaryDirectory() as tmp:
+            source=[{'role':'tool','content':text},{'role':'assistant'},{'role':'assistant'}]
+            self.assertNotEqual(project_messages(source,Path(tmp),{}),source)

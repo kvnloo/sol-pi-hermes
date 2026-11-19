@@ -144,7 +144,7 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     # message-level isError flags. Keep explicit failures visible in full.
     try:
         payload = json.loads(text)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         payload = None
     if isinstance(payload, dict) and (
         payload.get("error")
