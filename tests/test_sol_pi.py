@@ -179,6 +179,18 @@ class EprTests(unittest.TestCase):
             )
         )
 
+    def test_valid_quotes_still_yield_receipt(self) -> None:
+        body = "error: boom\n" * 500
+        receipt = transform_if_reduced(
+            tool_name="terminal",
+            args={"command": "cargo test"},
+            result=body,
+            reducer=lambda **_: {"quotes": ["error: boom"], "notes": "one failure"},
+        )
+        self.assertIsNotNone(receipt)
+        self.assertTrue(receipt.startswith("sol_pi_evidence_receipt_v1"))
+        self.assertIn("- error: boom", receipt)
+
 
 class FusionTests(unittest.TestCase):
     def test_then_run_skipped_on_mutate_failure(self) -> None:
