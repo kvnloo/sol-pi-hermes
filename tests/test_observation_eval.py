@@ -47,6 +47,17 @@ class ObservationShadowTests(unittest.TestCase):
         self.assertTrue(all(case["control_unchanged"] for case in report["cases"]))
         self.assertTrue(all(send["latency_ns"] == 100 for case in report["cases"] for send in case["sends"]))
 
+    def test_text_block_control_reports_hidden_fields_like_text_payload(self):
+        large = {f["name"]: f for f in _fixture_set()["cases"]}["large_tree"]
+        blocks = copy.deepcopy(large)
+        blocks["control"] = {"content_blocks": [
+            {"type": "text", "text": json.dumps(large["control"]["text_payload"])}]}
+        got = evaluate_fixture(blocks, clock=_deterministic_clock())["sends"][2]
+        want = evaluate_fixture(large, clock=_deterministic_clock())["sends"][2]
+        self.assertTrue(got["packed"])
+        self.assertIn("elements", got["visible_missing_fields"])
+        self.assertEqual(got["visible_missing_fields"], want["visible_missing_fields"])
+
     def test_large_tree_and_repeated_hide_structured_fields_but_recall_exactly(self):
         fixtures = {f["name"]: f for f in _fixture_set()["cases"]}
         for name in ("large_tree", "repeated"):

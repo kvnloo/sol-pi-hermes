@@ -194,11 +194,7 @@ def evaluate_fixture(
                     "saved_estimated_text_tokens": original_estimated_tokens - after_estimated_tokens,
                     "retained_indices": _indices(visible_text),
                     "retained_element_tokens": _tokens(visible_text, raw_tokens),
-                    "visible_missing_fields": (
-                        _missing_fields(original_text, visible_text)
-                        if isinstance(original_content, str) and isinstance(visible, str)
-                        else []
-                    ),
+                    "visible_missing_fields": _missing_fields(original_text, visible_text),
                     "byte_exact_recall": exact_recall,
                     "lost_fields_after_recall": lost_after_recall,
                     "latency_ns": latency_ns,
