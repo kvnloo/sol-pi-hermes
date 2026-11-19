@@ -64,5 +64,23 @@ class SizeThresholdTests(unittest.TestCase):
             self.assertEqual(create_observation(over, Path(tmp)).bytes, THRESHOLD_BYTES + 1)
 
 
+class ContentBlockTests(unittest.TestCase):
+    def test_text_block_lists_pack_and_other_shapes_do_not(self):
+        half = BIG[: len(BIG) // 2]
+        self.assertTrue(packed({'role': 'tool', 'content': [{'type': 'text', 'text': half}, half]}))
+        for content in ([], [{'type': 'image', 'text': BIG}], [{'type': 'text', 'text': BIG}, {'type': 'image'}]):
+            with self.subTest(content=content):
+                self.assertFalse(packed({'role': 'tool', 'content': content}))
+                self.assertFalse(is_pure_text_tool_result({'role': 'tool', 'content': content}))
+
+    def test_observation_text_joins_only_text_blocks(self):
+        message = {'role': 'tool', 'content': [
+            {'type': 'text', 'text': 'a' * THRESHOLD_BYTES}, {'type': 'image', 'text': 'zzz'},
+            {'type': 'text', 'text': None}, 'tail']}
+        with tempfile.TemporaryDirectory() as tmp:
+            observation = create_observation(message, Path(tmp))
+        self.assertEqual(observation.text, 'a' * THRESHOLD_BYTES + '\n\ntail')
+
+
 if __name__ == '__main__':
     unittest.main()
