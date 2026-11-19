@@ -1,4 +1,5 @@
 import json
+from dataclasses import FrozenInstanceError
 import tempfile
 import unittest
 from pathlib import Path
@@ -160,6 +161,11 @@ class ConfigValidationTests(unittest.TestCase):
                 _write(Path(tmp), '{"version": 1, "cacheWriteReadRatio": %s}' % literal)
                 with self.assertRaisesRegex(ValueError, "cacheWriteReadRatio"):
                     load_sol_pi_config(None, Path(tmp))
+
+    def test_loaded_config_is_immutable(self) -> None:
+        cfg = load_sol_pi_config(raw={"version": 1})
+        with self.assertRaises(FrozenInstanceError):
+            cfg.action_fusion = True
 
 
 if __name__ == "__main__":
