@@ -13,6 +13,14 @@ class ErrorResultPins(unittest.TestCase):
         self.assertFalse(is_pure_text_tool_result({**base, "is_error": True}))
         self.assertTrue(is_pure_text_tool_result({**base, "isError": False, "is_error": False}))
 
+    def test_list_content_must_be_nonempty_and_all_text(self) -> None:
+        text = {"type": "text", "text": "x"}
+        base = {"role": "tool"}
+        self.assertTrue(is_pure_text_tool_result({**base, "content": [text, "s"]}))
+        self.assertFalse(is_pure_text_tool_result({**base, "content": []}))
+        self.assertFalse(is_pure_text_tool_result({**base, "content": [text, {"type": "image"}]}))
+        self.assertFalse(is_pure_text_tool_result({**base, "content": [{"type": "image"}, text]}))
+
 
 if __name__ == "__main__":
     unittest.main()
