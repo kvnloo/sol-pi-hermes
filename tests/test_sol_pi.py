@@ -182,6 +182,14 @@ class OccSettledRecordedTests(unittest.TestCase):
         gate.enabled = False
         self.assertFalse(gate.should_compact())
 
+    def test_boundary_while_disabled_is_not_remembered(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        gate.on_plan_boundary()
+        gate.enabled = True
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "no_pending_boundary")
+        self.assertFalse(gate.should_compact())
+
     def test_settle_while_disabled_is_still_recorded(self) -> None:
         gate = OnlineCompactGate(enabled=False)
         self.assertFalse(gate.on_agent_settled())
