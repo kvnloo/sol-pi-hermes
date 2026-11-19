@@ -65,6 +65,16 @@ class RecallDescriptorTests(unittest.TestCase):
         self.assertEqual(len(opened),1)
         with self.assertRaises(OSError):os.fstat(opened[0])
 
+    def test_opened_nonregular_mode_with_matching_identity_rejected(self):
+        import stat
+        real_fstat = os.fstat
+        def chr_fstat(fd):
+            r = real_fstat(fd)
+            return os.stat_result((stat.S_IFCHR | 0o600,) + tuple(r)[1:])
+        with patch('os.fstat', chr_fstat):
+            with self.assertRaisesRegex(OSError, 'changed while opening'):
+                self.read()
+
     @unittest.skipUnless(hasattr(os,'mkfifo') and hasattr(os,'O_NONBLOCK'),'POSIX FIFO required')
     def test_fifo_swap_is_nonblocking_and_descriptor_closed(self):
         real_open=os.open;opened=[]
