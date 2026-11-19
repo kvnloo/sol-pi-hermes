@@ -39,11 +39,25 @@ class EprGatePins(unittest.TestCase):
     def test_secret_gate_blocks_reduction(self) -> None:
         self.assertFalse(should_reduce("api_key=abc\n" + "a" * MIN_BYTES, "pytest"))
 
+    def test_every_diagnostic_runner_is_matched(self) -> None:
+        for cmd in ("lake build", "lean f.lean", "coq", "cargo test", "zig build", "ctest", "cmake --build b",
+                    "ninja", "make", "npm test", "pnpm test", "yarn test", "go test ./...", "bazel test //x"):
+            self.assertTrue(should_reduce("a" * MIN_BYTES, cmd), cmd)
+
+    def test_every_secret_marker_blocks_reduction(self) -> None:
+        for marker in ("authorization: x", "bearer=x", "access-token=x", "secret=x", "api_key: x", "api_key" + "z" * 32 + "=x"):
+            self.assertFalse(should_reduce(marker + "\n" + "a" * MIN_BYTES, "pytest"), marker)
+        self.assertTrue(should_reduce("api_key" + "z" * 33 + "=x\n" + "a" * MIN_BYTES, "pytest"))
+
+    def test_min_bytes_counts_bytes_not_characters(self) -> None:
+        self.assertTrue(should_reduce("é" * (MIN_BYTES // 2), "pytest"))
+
     def test_tool_names_and_cmd_alias(self) -> None:
         for tool in ("terminal", "bash", "execute"):
             self.assertIsNotNone(_run(tool=tool, reducer=_ok), tool)
         self.assertIsNone(_run(tool="read_file", reducer=_ok))
         self.assertIsNotNone(_run(args={"cmd": "pytest -q"}, reducer=_ok))
+        self.assertIsNone(_run(args={}, reducer=_ok))  # no command at all is never reduced
 
 
 class EprFailOpen(unittest.TestCase):
@@ -65,6 +79,9 @@ class EprFailOpen(unittest.TestCase):
 
     def test_unverifiable_quote_keeps_original(self) -> None:
         self.assertIsNone(_run(reducer=lambda **_: {"quotes": ["not in the log"], "notes": ""}))
+
+    def test_one_unverifiable_quote_among_valid_ones_keeps_original(self) -> None:
+        self.assertIsNone(_run(reducer=lambda **_: {"quotes": ["error: boom", "not in the log"], "notes": ""}))
 
     def test_receipt_not_smaller_keeps_original(self) -> None:
         # Receipt strictly larger than a body that is just over MIN_BYTES.
@@ -94,3 +111,5 @@ class EprReceipt(unittest.TestCase):
         self.assertEqual(lines[-1], "")  # missing notes -> empty, never the string "None"
         self.assertEqual(lines[2], f"source_sha256: {hash_text(BIG)}")
         self.assertNotIn("None", receipt)
+        self.assertEqual(lines[3:7], ["quotes:", "- error: boom", "- padding line", "notes:"])
+        self.assertEqual(_run(reducer=lambda **_: {"quotes": ["error: boom"], "notes": "why"}).split("\n")[-2:], ["notes:", "why"])
