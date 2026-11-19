@@ -23,7 +23,9 @@ class RecallDescriptorTests(unittest.TestCase):
             if path==self.path:swap()
             return real_path_open(path,*args,**kw)
         def os_open(path,*args,**kw):
-            if Path(path)==self.path:swap()
+            if Path(path)==self.path:
+                self.assertTrue(args[0] & getattr(os,'O_NOFOLLOW',0))
+                swap()
             return real_os_open(path,*args,**kw)
         with patch.object(Path,'open',path_open),patch('os.open',os_open):
             with self.assertRaises(OSError):self.read()
@@ -74,6 +76,14 @@ class RecallDescriptorTests(unittest.TestCase):
         with patch('os.fstat', chr_fstat):
             with self.assertRaisesRegex(OSError, 'changed while opening'):
                 self.read()
+
+    def test_size_comes_from_opened_descriptor_not_earlier_lstat(self):
+        self.path.write_text('abcdefghij')
+        stale = self.path.lstat()
+        stale = os.stat_result(tuple(stale)[:6] + (0,) + tuple(stale)[7:])  # file grew after lstat
+        with patch.object(Path, 'lstat', lambda p: stale):
+            result = read_recall_chunk(self.path, 0, max_bytes=4, max_lines=100)
+        self.assertEqual((result['text'], result['nextOffset'], result['eof']), ('abcd', 4, False))
 
     @unittest.skipUnless(hasattr(os,'mkfifo') and hasattr(os,'O_NONBLOCK'),'POSIX FIFO required')
     def test_fifo_swap_is_nonblocking_and_descriptor_closed(self):
