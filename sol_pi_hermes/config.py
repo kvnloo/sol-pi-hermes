@@ -80,7 +80,8 @@ def load_sol_pi_config(
         if key not in CONFIG_KEYS:
             raise ValueError(f"Unknown SoL-Pi config key: {key}")
     version = parsed.get("version", 1)
-    if version != 1:
+    # bool is an int subclass, but JSON Schema const 1 does not accept true.
+    if isinstance(version, bool) or not isinstance(version, (int, float)) or version != 1:
         raise ValueError("SoL-Pi config version must be 1")
 
     def _bool(key: str) -> bool:

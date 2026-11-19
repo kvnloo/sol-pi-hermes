@@ -103,6 +103,11 @@ class ConfigValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version must be 1"):
             load_sol_pi_config(raw={"version": 2})
 
+    def test_boolean_true_is_not_version_one(self) -> None:
+        # True == 1 in Python, but JSON `true` is not the integer version 1.
+        with self.assertRaisesRegex(ValueError, "version must be 1"):
+            load_sol_pi_config(raw={"version": True})
+
     def test_each_feature_flag_is_read_and_must_be_boolean(self) -> None:
         fields = {
             "actionFusion": "action_fusion",
