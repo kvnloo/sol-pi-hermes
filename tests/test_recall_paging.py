@@ -35,6 +35,13 @@ class RecallPagingTests(unittest.TestCase):
         got = chunk('ab😀cd'.encode(), max_bytes=6)
         self.assertEqual((got['text'], got['nextOffset']), ('ab😀', 6))
 
+    def test_mid_character_offset_with_tiny_budget_reports_no_progress(self):
+        # Offset 1 is inside the emoji; backoff reaches 0 and must stop there.
+        # With `end >= 0` it would slice buffer[:-1] and surface a
+        # UnicodeDecodeError (also a ValueError), so only the message differs.
+        with self.assertRaisesRegex(ValueError, 'no progress'):
+            chunk('😀'.encode(), offset=1, max_bytes=1)
+
     def test_pages_reassemble_losslessly_and_report_eof(self):
         data = 'α\nβγ\n😀x\nlast'.encode()
         out, offset = '', 0
