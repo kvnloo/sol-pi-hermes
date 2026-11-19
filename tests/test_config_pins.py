@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sol_pi_hermes.config import (
     DEFAULT_CACHE_WRITE_READ_RATIO,
@@ -50,6 +51,23 @@ class ConfigPathTests(unittest.TestCase):
             _write(home, "{not json")
             with self.assertRaisesRegex(ValueError, "Unable to read SoL-Pi config"):
                 load_sol_pi_config(None, home)
+
+    def test_defaults_are_the_documented_literals(self) -> None:
+        want = SolPiConfig(
+            version=1,
+            evidence_preserving_reducer_model="gpt-5.6-luna",
+            evidence_preserving_reducer_provider="openai-codex",
+            cache_write_read_ratio=12.5,
+        )
+        self.assertEqual(SolPiConfig(), want)
+        self.assertEqual(load_sol_pi_config(raw={}), want)
+
+    def test_unreadable_file_is_a_named_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(Path(tmp), "{}")
+            with mock.patch.object(Path, "read_text", side_effect=PermissionError("denied")):
+                with self.assertRaisesRegex(ValueError, "Unable to read SoL-Pi config.*denied"):
+                    load_sol_pi_config(None, Path(tmp))
 
 
 class ConfigValidationTests(unittest.TestCase):
