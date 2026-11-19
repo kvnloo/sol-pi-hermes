@@ -128,6 +128,7 @@ class OccTests(unittest.TestCase):
     def test_default_gate_is_disabled(self) -> None:
         gate = OnlineCompactGate()
         self.assertFalse(gate.enabled)
+        self.assertEqual(gate.last_reason, "waiting_for_agent_settled")
         gate.on_plan_boundary()
         self.assertFalse(gate.on_agent_settled())
         self.assertEqual(gate.last_reason, "disabled")
