@@ -175,6 +175,14 @@ class OccSettledRecordedTests(unittest.TestCase):
         gate.enabled = False
         self.assertFalse(gate.should_compact())
 
+    def test_settle_while_disabled_is_still_recorded(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        self.assertFalse(gate.on_agent_settled())
+        self.assertTrue(gate.settled)
+        gate.enabled = True
+        gate.on_plan_boundary()
+        self.assertTrue(gate.should_compact())
+
 
 class EprTests(unittest.TestCase):
     def test_secrets_are_not_reduced(self) -> None:
