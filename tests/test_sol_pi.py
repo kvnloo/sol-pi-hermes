@@ -250,6 +250,36 @@ class EprTests(unittest.TestCase):
     def test_quote_verify_fail_open(self) -> None:
         self.assertFalse(quote_verify(["missing"], "log"))
         self.assertTrue(quote_verify(["error: boom"], "error: boom\nrest"))
+        self.assertFalse(quote_verify([], "error: boom\n"))
+        for blank in ("", "  ", "\n"):
+            self.assertFalse(quote_verify([blank], "error: boom\n"))
+            self.assertFalse(quote_verify(["error: boom", blank], "error: boom\n"))
+        self.assertIsNone(
+            transform_if_reduced(
+                tool_name="terminal",
+                args={"command": "cargo test"},
+                result="error: boom\n" * 500,
+                reducer=lambda **_: {"quotes": [""], "notes": "no evidence"},
+            )
+        )
+        for bad in (None, 5):
+            self.assertIsNone(
+                transform_if_reduced(
+                    tool_name="terminal",
+                    args={"command": "cargo test"},
+                    result=f"error: {bad} boom\n" * 500,
+                    reducer=lambda bad=bad, **_: {"quotes": [bad], "notes": "coerced"},
+                )
+            )
+        for bad in (None, 5):
+            self.assertIsNone(
+                transform_if_reduced(
+                    tool_name="terminal",
+                    args={"command": "cargo test"},
+                    result=f"error: boom {bad}\n" * 500,
+                    reducer=lambda bad=bad, **_: {"quotes": ["error: boom", bad], "notes": "mixed"},
+                )
+            )
         self.assertIsNone(
             transform_if_reduced(
                 tool_name="terminal",
@@ -258,6 +288,18 @@ class EprTests(unittest.TestCase):
                 reducer=None,
             )
         )
+
+    def test_valid_quotes_still_yield_receipt(self) -> None:
+        body = "error: boom\n" * 500
+        receipt = transform_if_reduced(
+            tool_name="terminal",
+            args={"command": "cargo test"},
+            result=body,
+            reducer=lambda **_: {"quotes": ["error: boom"], "notes": "one failure"},
+        )
+        self.assertIsNotNone(receipt)
+        self.assertTrue(receipt.startswith("sol_pi_evidence_receipt_v1"))
+        self.assertIn("- error: boom", receipt)
 
 
 class FusionTests(unittest.TestCase):
@@ -281,7 +323,7 @@ class FusionTests(unittest.TestCase):
             path.write_text("print(1)\n", encoding="utf-8")
 
             def mutate() -> str:
-                return "wrote"
+                return json.dumps({"bytes_written": 9})
 
             out = json.loads(
                 execute_mutation_then_run(

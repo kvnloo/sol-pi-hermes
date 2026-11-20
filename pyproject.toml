@@ -15,5 +15,8 @@ keywords = ["hermes", "sol-pi", "observation-pack"]
 [project.urls]
 Homepage = "https://github.com/kvnloo/sol-pi-hermes"
 
+[project.entry-points."hermes_agent.plugins"]
+sol-pi = "sol_pi_hermes"
+
 [tool.setuptools]
 packages = ["sol_pi_hermes"]

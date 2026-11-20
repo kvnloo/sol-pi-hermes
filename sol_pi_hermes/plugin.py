@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -33,8 +34,13 @@ OBS_RECALL_SCHEMA = {
 }
 
 
-def _session_id(**kwargs: Any) -> str:
-    return str(kwargs.get("session_id") or kwargs.get("task_id") or "default")
+def _session_id(**kwargs: Any) -> str | None:
+    # Never map missing host context to a real session named "default".
+    for key in ("session_id", "task_id"):
+        value = kwargs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _tool_context(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -54,6 +60,8 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
 
     def root_for(**kwargs: Any) -> Path:
         sid = _session_id(**kwargs)
+        if sid is None:
+            raise ValueError("ObservationPack requires a host session_id or task_id")
         if sid not in roots:
             roots[sid] = runtime_root_for_session(sid)
         return roots[sid]
@@ -61,10 +69,17 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
     def on_llm_request(request=None, **kwargs: Any):
         if not cfg.observation_pack or not isinstance(request, dict):
             return None
+        if _session_id(**kwargs) is None:
+            return None  # Preserve the full observation; do not persist it unscoped.
         return project_request(request, root_for(**kwargs), sent_counts)
 
     def obs_recall(args: dict, **kwargs: Any) -> str:
-        return recall(root_for(**kwargs), str(args.get("id") or ""), int(args.get("offset") or 0))
+        if _session_id(**kwargs) is None:
+            return json.dumps({"error": "ObservationPack requires a host session_id or task_id"})
+        offset = args.get("offset", 0)
+        if type(offset) is not int or offset < 0:
+            return json.dumps({"error": "ObservationPack offset must be a non-negative integer"})
+        return recall(root_for(**kwargs), str(args.get("id") or ""), offset)
 
     def _run_terminal(command: str, timeout: float | None, context: dict[str, Any]) -> str:
         payload: dict[str, Any] = {"command": command}
@@ -73,9 +88,17 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
         return str(ctx.dispatch_tool("terminal", payload, **context))
 
     def sol_pi_write(args: dict, **kwargs: Any) -> str:
-        path = Path(str(args.get("path") or ""))
+        # Plugin schemas are not runtime argument validation in Hermes. Never
+        # coerce absent/invalid content into an intentional empty-file write.
+        if not isinstance(args, dict):
+            return json.dumps({"error": "sol_pi_write requires an argument object; no mutation was attempted."})
+        if not isinstance(args.get("path"), str) or not args["path"]:
+            return json.dumps({"error": "sol_pi_write requires a nonempty string path; no mutation was attempted."})
+        if not isinstance(args.get("content"), str):
+            return json.dumps({"error": "sol_pi_write requires string content (empty string is allowed); no mutation was attempted."})
+        path = Path(args["path"])
         context = _tool_context(kwargs)
-        content = str(args.get("content") or "")
+        content = args["content"]
 
         def mutate() -> str:
             return str(ctx.dispatch_tool("write_file", {"path": str(path), "content": content}, **context))
@@ -86,7 +109,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
             absolute_path=None,
-            then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
+            then_run=args.get("then_run"),
             run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
@@ -104,7 +127,7 @@ def register(ctx: Any, config: SolPiConfig | None = None) -> None:
             mutate=mutate,
             # PluginContext does not attest that the backend path is host-local.
             absolute_path=None,
-            then_run=args.get("then_run") if isinstance(args.get("then_run"), dict) else None,
+            then_run=args.get("then_run"),
             run_command=lambda command, timeout: _run_terminal(command, timeout, context),
         )
 
