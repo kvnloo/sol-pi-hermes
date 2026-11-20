@@ -182,3 +182,10 @@ Duplicate appearances use the same prior count and packing decision; distinct
 call IDs keep independent counts. This does not change the existing cold-history
 assistant-turn estimate, or turn projection into an acknowledgement that a
 provider actually received a request. Ledger records remain per appearance.
+ObservationPack leaves a tool result unchanged when any text block carries
+extra fields (including citations, annotations, IDs or cache controls), or has
+missing/non-string text. The archive is text-only and cannot restore those
+fields. Plain strings and exact `{type: "text", text: <string>}` blocks remain
+eligible, including mixed lists of those two plain forms. Rich results incur no
+archive or send-count side effects; this conservative gate favors retaining
+provider-visible metadata over token savings.
