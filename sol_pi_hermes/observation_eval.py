@@ -76,6 +76,20 @@ def _bytes(content: str | list[Any]) -> int:
 
 
 def _indices(text: str) -> list[int]:
+    """Count structured Hermes element indices, or estimate from text fragments."""
+    try:
+        payload = json.loads(text)
+    except (ValueError, RecursionError):
+        payload = None
+    if isinstance(payload, dict) and isinstance(payload.get("elements"), list):
+        return sorted({
+            element["index"] for element in payload["elements"]
+            if isinstance(element, dict)
+            and type(element.get("index")) is int
+            and element["index"] >= 0
+        })
+    # Packed excerpts need not be complete JSON; retain the legacy heuristic
+    # when we cannot identify a complete Hermes elements array.
     return sorted({int(match) for match in _ELEMENT_INDEX.findall(text)})
 
 

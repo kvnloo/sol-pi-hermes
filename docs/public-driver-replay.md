@@ -107,3 +107,9 @@ checks. Keep issue #2 open until its remaining evidence gates are met.
 [capture-boundary]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/tools/computer_use/tool.py#L398-L404
 [tool-message]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/agent/tool_executor.py#L1154-L1164
 [transport]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/agent/chat_completion_helpers.py#L756-L789
+
+For a complete JSON control with an `elements` array, index metrics read the
+array entries, not unrelated fields or the escape spelling of JSON keys. Packed
+text excerpts and other legacy text without a recognizable array retain the
+text heuristic; these index counts are estimates, not a guarantee that the
+model can select the original element.
