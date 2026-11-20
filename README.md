@@ -171,3 +171,8 @@ returning the same next offset with `eof: false`. This catches truncation betwee
 the size check and read, and a byte budget too small for the next UTF-8 character.
 Legitimate empty EOF responses remain valid. This progress check does not make
 mutable archives immutable or detect every concurrent in-place content change.
+The standalone `~/.hermes` fallback applies only when `hermes_constants` itself
+is unavailable. A present host with a missing resolver, broken dependency or
+failing profile resolver now fails registration rather than silently loading a
+default-profile policy or choosing its archive location. Operators must repair
+the host/profile failure before retrying; no alternate profile is inferred.
