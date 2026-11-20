@@ -172,6 +172,25 @@ class MeasurementTests(unittest.TestCase):
         self.assertIn('--requests must be positive', err.getvalue())
         self.assertEqual(out.getvalue(), '')
 
+    def test_one_corrupted_observation_fails_roundtrip_even_if_a_later_one_is_clean(self):
+        real = observation_pack.recall
+        bad = []
+        def corrupt_first(root, observation_id, *rest):
+            page = json.loads(real(root, observation_id, *rest))
+            bad.append(observation_id) if not bad else None
+            if observation_id == bad[0]:
+                page['content'] += 'x'
+            return json.dumps(page)
+        rows = fixtures()['large_ascii'] + fixtures()['large_unicode']
+        with mock.patch.object(observation_pack, 'recall', corrupt_first):
+            result = measure(rows)
+        self.assertEqual(result['recalled_observations'], 2)
+        self.assertIs(result['recall_roundtrip'], False)
+
+    def test_request_rows_are_numbered_from_one(self):
+        rows = measure(fixtures()['large_ascii'], requests=3)['requests']
+        self.assertEqual([row['request'] for row in rows], [1, 2, 3])
+
     def test_recall_error_and_stalled_pagination_are_rejected(self):
         real = observation_pack.recall
         def error(root, observation_id, *rest):
