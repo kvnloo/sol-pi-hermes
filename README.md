@@ -96,3 +96,35 @@ than reopening an unchecked path. Platforms without nonblocking file opens
 refuse archive reuse, leaving projection unchanged through the existing
 fail-open path. This is not a sandbox against hostile parent directories or
 in-place modification after validation, nor a durability guarantee.
+### Fused command admission
+
+A fused follow-up command requires an affirmative mutation result: Hermes patch
+results report `success: true`; write results report a nonnegative integer
+`bytes_written` (including a successful empty write). Reported errors override
+these fields. Missing, malformed, pending or unknown results skip the command
+and preserve the mutation response for inspection. The mutation may already
+have happened; a skipped follow-up is not a rollback. Calls without `then_run`
+still return the original mutation result unchanged.
+
+`sol_pi_write` validates its required inputs before any nested dispatch: `path`
+must be a nonempty string and `content` must be a string. Missing/null/boolean or
+structured content is rejected, never coerced into an empty-file write. An
+explicit empty string remains a valid deliberate write. Hermes advertises plugin
+schemas but does not apply its built-in required-argument checks to plugins, so
+this boundary is enforced by the plugin itself.
+
+Fused follow-up specifications are checked before either write or patch is
+attempted. A provided `then_run` must contain a nonblank string `command` and,
+when supplied, a finite non-negative numeric `timeout` (not a boolean). Timeout
+0 retains Hermes's default-timeout behavior. Omitted/null `then_run` retains the
+existing mutation-only behavior; omitted/null timeout uses the host default.
+Malformed specifications return an error without attempting either nested tool.
+This preflight does not guarantee that a valid command will succeed or provide
+rollback if a later backend operation fails.
+
+Action Fusion rejects an actual NUL character in `then_run.command` before any
+mutation or nested command dispatch. Native command spawning cannot accept that
+argument, so discovering it after a successful write/patch would create an
+avoidable partial action. Literal backslash-zero, Unicode and newlines remain
+unchanged. This is argument validation, not shell-command safety analysis or a
+promise that valid commands will succeed or that failed checks roll back edits.
