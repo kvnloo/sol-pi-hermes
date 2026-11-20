@@ -33,7 +33,7 @@ def verify_host(host, expected=HOST):
 
 
 def verify_import(module, root, relative):
-    if Path(module.__file__).resolve() != root / relative:
+    if Path(module.__file__).resolve() != (root / relative).resolve():
         raise ValueError(f'Unexpected import origin: {module.__name__}')
 
 
