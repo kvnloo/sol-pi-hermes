@@ -282,3 +282,17 @@ class MeasurementTests(unittest.TestCase):
         self.assertGreater(seen['files'], 0)
         self.assertTrue(root.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()))
         self.assertFalse(root.exists())
+
+    def test_controls_are_zero_only_because_of_their_disqualifier(self):
+        # Each twin is the control minus its disqualifier; it must pack, or the
+        # control would read zero savings merely for being too small.
+        error = fixtures()['error_control'][0].copy()
+        del error['isError']
+        image = fixtures()['mixed_image_control'][0].copy()
+        image['content'] = [part for part in image['content'] if part['type'] == 'text']
+        for name, twin in (('error_control', error), ('mixed_image_control', image)):
+            with self.subTest(name=name):
+                self.assertEqual(measure(fixtures()[name])['saved_bytes_before_recall'], 0)
+                result = measure([twin])
+                self.assertGreater(result['saved_bytes_before_recall'], 0)
+                self.assertEqual(result['recalled_observations'], 1)
