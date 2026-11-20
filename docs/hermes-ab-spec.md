@@ -119,6 +119,23 @@ Use the 5th percentile of draws as the one-sided 95% lower confidence bound.
 Declare non-inferiority only if that bound is strictly greater than
 **−3 percentage points**. Precheck method performance and sample size without
 inspecting evaluation outcomes; insufficient precision is inconclusive.
+An all-tie sample or any degenerate bootstrap distribution is **inconclusive**,
+not evidence that the lower bound is zero. Before live collection, freeze and
+check coverage and power under sparse discordance at the −3-point boundary,
+including task-level holdout or synthetic adverse/no-change cases. If the
+planned interval fails the coverage check, pre-register a qualified paired
+interval or report descriptive results only; do not choose the method after
+seeing outcomes. Claims beyond the frozen suite require a defensible
+task-sampling population.
+
+For a planning stress case only, suppose independent tasks tie except for a
+3% chance of a full-point loss. Forty-eight tasks all tie about 23.18% of the
+time at the null boundary. With no losses, the one-sided exact 95% upper
+loss-rate bound is 6.05% for 48 tasks; 99 is the first count below 3% in this
+simplified case. This is not a sample-size recommendation for matched,
+replicated benchmark outcomes. The 48 dry-run jobs are only three fake
+clusters.
+
 Report the point estimate, bound, sample size, failures and missingness.
 Report both single-feature arms and all other contrasts descriptively, without
 secondary non-inferiority claims. The dry run computes fake pass rates only;
