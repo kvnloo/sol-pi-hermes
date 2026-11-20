@@ -175,7 +175,7 @@ class MeasurementTests(unittest.TestCase):
     def test_recall_error_and_stalled_pagination_are_rejected(self):
         real = observation_pack.recall
         def error(root, observation_id, *rest):
-            return real(root, 'obs_missing', *rest)
+            return real(root, 'obs_' + '0' * 24, *rest)  # well-formed, absent
         calls = []
         def stalled(*a):
             calls.append(a)
