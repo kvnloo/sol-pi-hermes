@@ -55,3 +55,55 @@ legacy `text_payload` (an object serialized with `json.dumps` defaults), or
 behavior. This preserves an offline string representation, not proof that a
 provider received it, nor an original same-call capture or decision-equivalence
 claim. The parser still reads the control separately to locate its public spill.
+
+## Handoff for a future original pair (issue #2)
+
+For [issue #2](https://github.com/kvnloo/sol-pi-hermes/issues/2), start with one
+owner-authorized AX-only capture of a synthetic window. Use the pinned Hermes
+commit above, ordinary capture settings, and no ObservationPack projection on the
+executed request. This section describes evidence to obtain, not evidence already
+collected. Use an already authorized recorder; if it cannot observe both boundaries,
+leave the case unpaired rather than instrumenting production or reconstructing it.
+
+1. At [the normalized capture boundary][capture-boundary], record the exact
+   `CaptureResult` returned by `backend.capture`, before `_capture_response`.
+   Associate it with the enclosing session and tool call. For this first slice,
+   use a direct `capture` call, not an action-triggered follow-up capture.
+2. From the same call's actual submitted provider request, extract just its
+   tool-result content and correlate the outbound tool-call ID with the same
+   capture/session. The [tool-message assembly][tool-message] may transform the
+   tool result before it reaches the [non-streaming chat transport][transport];
+   neither a persisted transcript nor a fresh serializer invocation proves what
+   was sent. For text, preserve the exact UTF-8 bytes of the decoded outbound
+   content string, including whitespace, Unicode escapes within the string and
+   number spelling. This is the tool-content byte sequence, not the wire JSON
+   envelope or proof that the provider received or acted on it.
+3. In a private fixture, record the host SHA, capture mode/settings, pairing
+   identifiers, and the outbound content's SHA-256 and UTF-8 byte length.
+   Use `capture` for the normalized object, `tool_call_id` for the correlated
+   call, and `control.raw_text_payload` for the original JSON-object string;
+   include the case `name`. At top level, set `schema_version` to 1, record
+   the pinned commit as `host_main_sha`, and include `provenance` and a nonempty
+   `cases` array. Recheck the
+   byte length and digest after reading the fixture back. A separate native
+   block case would use only `control.content_blocks`, preserving list order
+   and block fields; it is not part of this AX-only first acquisition. Do not
+   rewrite control strings or strip fields to fit the schema: label an
+   incompatible control unsupported. Do not record headers, credentials,
+   unrelated messages, or actual user/desktop data. Keep fixtures private; if a
+   pair needs redaction, collect again against a safe synthetic window instead
+   of treating the edited output as byte-exact original evidence.
+
+Manually reject mismatched or uncorrelatable event IDs, byte/hash mismatches,
+and serializer-only/reconstructed controls from the original-pair evidence set.
+The evaluator enforces fixture shape and replay invariants, not acquisition
+provenance. Once a pair qualifies, run the offline shadow evaluator with that
+fixture: the original request stays the control, the first two simulated sends
+must stay unchanged, and any third-send projection and recall are measured
+separately. Compare bytes, element/index/token retention, latency and exact
+recall; do not claim native-platform, model, or action equivalence from these
+checks. Keep issue #2 open until its remaining evidence gates are met.
+
+[capture-boundary]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/tools/computer_use/tool.py#L398-L404
+[tool-message]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/agent/tool_executor.py#L1154-L1164
+[transport]: https://github.com/NousResearch/hermes-agent/blob/09ded63c4fedcc8fe975d37f9765797d904fc75d/agent/chat_completion_helpers.py#L756-L789
