@@ -70,3 +70,29 @@ and other nonregular descriptors are rejected and closed. Platforms without
 nonblocking-open support skip optional ledger telemetry without opening a file.
 This is not a hostile-parent-directory sandbox or a filesystem I/O deadline;
 normal regular-file locking, torn-tail repair and short-write handling remain.
+### Observation archive publication
+
+New observation objects are written completely to a private 0600 temporary file,
+then published with an atomic, no-replace hard link in the same directory.
+Short writes are retried; zero-progress or failed writes do not expose a partial
+object. An existing object must still match its expected bytes and hash.
+If the filesystem cannot create hard links or the archive write fails, packing
+fails open and retains the full tool result. Normal failures remove temporary
+files; process termination can leave unpublished `.observation-*` files. This
+provides atomic visibility, not an fsync/power-loss durability guarantee. Ledger
+behavior and pre-existing archive permissions are unchanged.
+
+An already-published object is fully checked for regular-file type, expected size
+and content hash, then reused without creating or writing a temporary file.
+This avoids unnecessary duplicate writes and allows reuse when temporary-file
+creation fails. New objects still require atomic publication; corrupt existing
+objects are rejected rather than overwritten. Ledger I/O remains separate, so
+this does not promise that packing works on a wholly unwritable filesystem.
+
+Existing ObservationPack archives are validated through one nonblocking file
+descriptor: regular-file identity and expected size are checked before a bounded
+content/hash read. Path replacement and FIFO substitution are rejected rather
+than reopening an unchecked path. Platforms without nonblocking file opens
+refuse archive reuse, leaving projection unchanged through the existing
+fail-open path. This is not a sandbox against hostile parent directories or
+in-place modification after validation, nor a durability guarantee.

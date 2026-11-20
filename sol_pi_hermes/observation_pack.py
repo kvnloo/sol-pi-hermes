@@ -12,6 +12,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -171,26 +172,65 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     )
 
 
+def _validate_stored(observation: Observation) -> None:
+    before = observation.file_path.lstat()
+    if not stat.S_ISREG(before.st_mode):
+        raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
+    # Refuse platforms without nonblocking open rather than risk hanging on a
+    # FIFO substituted between lstat and open. NOFOLLOW is additional defense;
+    # descriptor identity checks still reject symlink targets without that flag.
+    if not hasattr(os, "O_NONBLOCK"):
+        raise OSError("Safe nonblocking archive validation is unavailable")
+    fd = os.open(observation.file_path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise OSError(f"Content-addressed observation changed during validation for {observation.id}")
+        if opened.st_size != observation.bytes:
+            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            # Bound reads even if a concurrent writer grows the same inode.
+            existing = stream.read(observation.bytes + 1)
+    finally:
+        os.close(fd)
+    if len(existing) != observation.bytes:
+        raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+    if hash_text(existing) != observation.content_hash:
+        raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+
+
 def ensure_stored(observation: Observation) -> None:
     directory = observation.file_path.parent
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     if directory.is_symlink() or not directory.is_dir():
         raise OSError(f"Observation directory is not a regular directory for {observation.id}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    # A previously published object needs verification, not another write.
+    # Keep the same validator for a concurrent publisher's EEXIST result.
+    if observation.file_path.exists():
+        _validate_stored(observation)
+        return
+    # Publish only complete objects. A short write or interrupted writer must
+    # never expose a truncated archive to projection or a concurrent reader.
+    fd, temporary_name = tempfile.mkstemp(prefix=".observation-", dir=directory)
+    temporary = Path(temporary_name)
     try:
-        fd = os.open(observation.file_path, flags, 0o600)
         try:
-            os.write(fd, observation.text.encode("utf-8"))
+            remaining = memoryview(observation.text.encode("utf-8"))
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("Observation write made no progress")
+                remaining = remaining[written:]
         finally:
             os.close(fd)
-    except FileExistsError:
-        existing = observation.file_path.read_bytes()
-        if not observation.file_path.is_file() or observation.file_path.is_symlink():
-            raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
-        if len(existing) != observation.bytes:
-            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
-        if hash_text(existing) != observation.content_hash:
-            raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+        try:
+            # Same-directory hard linking is atomic and never replaces an
+            # existing object (including one published by a concurrent writer).
+            os.link(temporary, observation.file_path)
+        except FileExistsError:
+            _validate_stored(observation)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _complete_line_excerpt(text: str, budget_bytes: int, from_end: bool) -> str:
