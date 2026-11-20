@@ -176,3 +176,9 @@ is unavailable. A present host with a missing resolver, broken dependency or
 failing profile resolver now fails registration rather than silently loading a
 default-profile policy or choosing its archive location. Operators must repair
 the host/profile failure before retrying; no alternate profile is inferred.
+ObservationPack send accounting advances once per observation ID per projected
+provider request, even when that ID appears repeatedly in the message list.
+Duplicate appearances use the same prior count and packing decision; distinct
+call IDs keep independent counts. This does not change the existing cold-history
+assistant-turn estimate, or turn projection into an acknowledgement that a
+provider actually received a request. Ledger records remain per appearance.
