@@ -429,14 +429,25 @@ def read_recall_chunk(
     max_bytes: int,
     max_lines: int,
 ) -> dict[str, Any]:
-    if not path.is_file() or path.is_symlink():
+    expected = path.lstat()
+    if not stat.S_ISREG(expected.st_mode):
         raise FileNotFoundError(path)
-    size = path.stat().st_size
-    if offset > size:
-        raise ValueError(f"Offset {offset} exceeds observation size {size}")
-    with path.open("rb") as handle:
-        handle.seek(offset)
-        buffer = handle.read(max_bytes + 4)
+    # Keep validation and reading on one descriptor. NONBLOCK prevents an
+    # attacker-swapped FIFO from hanging before its type can be checked.
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(path, flags)
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+            raise OSError("Observation changed while opening")
+        size = opened.st_size
+        if offset > size:
+            raise ValueError(f"Offset {offset} exceeds observation size {size}")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            handle.seek(offset)
+            buffer = handle.read(max_bytes + 4)
+    finally:
+        os.close(fd)
     end = min(len(buffer), max_bytes)
     newline_count = 0
     for index in range(end):
@@ -450,6 +461,10 @@ def read_recall_chunk(
         end -= 1
     chunk = buffer[:end]
     next_offset = offset + len(chunk)
+    if next_offset == offset and next_offset < size:
+        # A truncated archive or unusably small UTF-8 budget must not return
+        # an apparently successful page that tells callers to repeat forever.
+        raise ValueError("Observation recall made no progress before EOF; archive or read budget may have changed")
     text = chunk.decode("utf-8")
     return {
         "text": text,
