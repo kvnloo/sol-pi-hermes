@@ -113,5 +113,26 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(found.stdout.strip(), "ok", found.stderr)
 
 
+class EvaluatorPackagingTests(unittest.TestCase):
+    def test_default_fixtures_belong_to_runtime_package(self):
+        from sol_pi_hermes import observation_eval
+        self.assertEqual(observation_eval.DEFAULT_FIXTURES.parent,
+                         Path(observation_eval.__file__).resolve().parent / 'fixtures')
+        self.assertTrue(observation_eval.DEFAULT_FIXTURES.is_file())
+
+    def test_wheel_package_data_ships_the_fixture(self):
+        try:
+            import tomllib
+        except ImportError:
+            self.skipTest("tomllib needs Python 3.11+")
+        root = Path(__file__).resolve().parents[1]
+        cfg = tomllib.loads((root / "pyproject.toml").read_text())
+        globs = cfg["tool"]["setuptools"]["package-data"]["sol_pi_hermes"]
+        from sol_pi_hermes import observation_eval
+        pkg = observation_eval.DEFAULT_FIXTURES.parents[1]
+        shipped = {p for g in globs for p in pkg.glob(g)}
+        self.assertIn(observation_eval.DEFAULT_FIXTURES, shipped)
+
+
 if __name__ == "__main__":
     unittest.main()

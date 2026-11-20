@@ -20,3 +20,6 @@ sol-pi = "sol_pi_hermes"
 
 [tool.setuptools]
 packages = ["sol_pi_hermes"]
+
+[tool.setuptools.package-data]
+sol_pi_hermes = ["fixtures/*.json"]
