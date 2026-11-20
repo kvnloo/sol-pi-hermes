@@ -11,10 +11,17 @@ import hashlib
 import json
 import os
 import re
+import stat
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX hosts: omit optional ledger telemetry
+    fcntl = None
 
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
@@ -234,12 +241,47 @@ def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
     path = ledger_path(runtime_root)
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **dict(entry)}
-    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    record = (json.dumps(payload) + "\n").encode("utf-8")
+    if not hasattr(os, "O_NONBLOCK"):
+        # Optional telemetry must not risk a blocking special-file open.
+        return
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
     if path.is_symlink():
         raise OSError("Observation ledger must not be a symlink")
     fd = os.open(path, flags, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload) + "\n")
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("Observation ledger must be a regular file")
+        if not _try_lock(fd):
+            # Telemetry is optional; unlocked short writes can corrupt other records.
+            return
+        # A writer that died mid-record leaves no trailing newline; never glue onto it.
+        size = os.fstat(fd).st_size
+        if size and os.lseek(fd, size - 1, os.SEEK_SET) >= 0 and os.read(fd, 1) != b"\n":
+            record = b"\n" + record
+        view = memoryview(record)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError("Observation ledger write made no progress")
+            view = view[written:]
+    finally:
+        os.close(fd)
+
+
+def _try_lock(fd: int) -> bool:
+    """Bound lock retries to ~100ms; skip optional telemetry if unavailable."""
+    if fcntl is None:
+        return False
+    for _ in range(50):
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            time.sleep(0.002)
+        except OSError:  # e.g. ENOLCK on NFS: do not risk corrupting the ledger
+            return False
+    return False
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:

@@ -54,3 +54,19 @@ PYTHONPATH=. python -m unittest discover -s tests
 ```
 
 ObservationPack requires a nonempty host-provided session ID (or task ID fallback). Without one, request projection returns the full unchanged observation without archiving it, and recall returns an identity error. An explicit session named `default` remains valid but is never an anonymous fallback. These identifiers must come from the trusted host callback, not tool arguments.
+### Ledger contention
+
+The optional observation ledger uses a bounded lock attempt (50 non-blocking
+attempts, with 2 ms sleeps on contention). If locking times out, fails, or is
+unavailable on the platform, that telemetry record is omitted, rather than
+appended unsafely. Projection and recall remain available; the ledger is not
+a complete audit log. Successful cooperating writers hold the lock across
+torn-tail recovery and all short writes. Non-cooperating writers are not
+protected. Filesystem I/O itself is not time-bounded.
+
+Ledger appends open nonblocking and verify that the opened descriptor is a
+regular file before acquiring a lock or writing. Existing or substituted FIFOs
+and other nonregular descriptors are rejected and closed. Platforms without
+nonblocking-open support skip optional ledger telemetry without opening a file.
+This is not a hostile-parent-directory sandbox or a filesystem I/O deadline;
+normal regular-file locking, torn-tail repair and short-write handling remain.
