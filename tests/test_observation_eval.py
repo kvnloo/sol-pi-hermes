@@ -297,6 +297,7 @@ class ObservationShadowTests(unittest.TestCase):
             "request-time shadow only; original provider-visible control retained",
         )
         self.assertTrue(report["token_estimator"].startswith("ceil(text characters / 4)"))
+        self.assertTrue(report["token_estimator"].endswith("excludes image tokens and provider/cache billing"))
 
     def test_report_names_the_observation_id_only_for_packed_sends(self):
         fixture = next(f for f in _fixture_set()["cases"] if f["name"] == "large_tree")
