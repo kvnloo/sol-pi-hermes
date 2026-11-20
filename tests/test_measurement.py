@@ -65,6 +65,15 @@ class MeasurementTests(unittest.TestCase):
         result = measure(fixtures()['large_ascii'], requests=3)
         self.assertLess(result['net_saved_units_after_one_full_recall_response'], 0)
 
+    def test_aggregate_totals_are_sums_of_request_rows(self):
+        for name in ('large_ascii', 'large_unicode'):
+            with self.subTest(name=name):
+                result = measure(fixtures()[name])
+                for key in ('control_bytes', 'projected_bytes', 'control_units', 'projected_units'):
+                    self.assertEqual(result[key], sum(row[key] for row in result['requests']), key)
+                self.assertLess(result['projected_bytes'], result['control_bytes'])
+                self.assertLess(result['projected_units'], result['control_units'])
+
     def test_wire_serialization_is_pinned(self):
         self.assertEqual(observation_pack.wire({'b': '測', 'a': [1, None]}), '{"a":[1,null],"b":"測"}')
 
