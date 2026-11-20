@@ -83,8 +83,9 @@ class PluginHandlerTests(unittest.TestCase):
             ctx, calls = self._register(tmp, observation_pack=True)
             ctx.tools["obs_recall"]({"id": "x"}, session_id="S", task_id="T")
             ctx.tools["obs_recall"]({"id": "x"}, task_id="T")
-            ctx.tools["obs_recall"]({"id": "x"})
-            self.assertEqual(calls, ["S", "T", "default"])
+            missing = json.loads(ctx.tools["obs_recall"]({"id": "x"}))
+            self.assertIn("session_id or task_id", missing["error"])
+            self.assertEqual(calls, ["S", "T"])
 
     def test_patch_dispatch_strips_then_run_and_forwards_only_routing_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

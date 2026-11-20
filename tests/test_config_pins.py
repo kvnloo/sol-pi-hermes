@@ -1,0 +1,175 @@
+import json
+from dataclasses import FrozenInstanceError
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from sol_pi_hermes.config import (
+    DEFAULT_CACHE_WRITE_READ_RATIO,
+    DEFAULT_REDUCER_MODEL,
+    DEFAULT_REDUCER_PROVIDER,
+    SolPiConfig,
+    find_config_path,
+    load_sol_pi_config,
+)
+
+
+def _write(directory: Path, body: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "sol-pi.json"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+class ConfigPathTests(unittest.TestCase):
+    def test_project_file_wins_over_global_and_missing_means_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, cwd = Path(tmp) / "home", Path(tmp) / "proj"
+            home.mkdir()
+            self.assertIsNone(find_config_path(cwd, home))
+            self.assertEqual(load_sol_pi_config(cwd, home), SolPiConfig())
+            glob = _write(home, json.dumps({"version": 1, "actionFusion": True}))
+            self.assertEqual(find_config_path(cwd, home), glob)
+            self.assertEqual(find_config_path(None, home), glob)
+            proj = _write(cwd / ".hermes", json.dumps({"version": 1, "observationPack": True}))
+            self.assertEqual(find_config_path(cwd, home), proj)
+            cfg = load_sol_pi_config(cwd, home)
+            self.assertTrue(cfg.observation_pack)
+            self.assertFalse(cfg.action_fusion)
+
+    def test_project_config_that_is_a_directory_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home, cwd = Path(tmp) / "home", Path(tmp) / "proj"
+            glob = _write(home, json.dumps({"version": 1, "actionFusion": True}))
+            (cwd / ".hermes" / "sol-pi.json").mkdir(parents=True)
+            self.assertEqual(find_config_path(cwd, home), glob)
+            self.assertTrue(load_sol_pi_config(cwd, home).action_fusion)
+
+    def test_global_config_that_is_a_directory_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "sol-pi.json").mkdir()
+            self.assertIsNone(find_config_path(None, home))
+            self.assertEqual(load_sol_pi_config(None, home), SolPiConfig())
+
+    def test_home_falls_back_to_dot_hermes_outside_hermes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            glob = _write(Path(tmp) / ".hermes", "{}")
+            with mock.patch.dict("sys.modules", {"hermes_constants": None}), \
+                    mock.patch.object(Path, "home", return_value=Path(tmp)):
+                self.assertEqual(find_config_path(), glob)
+
+    def test_home_prefers_hermes_constants_when_available(self) -> None:
+        import types
+        with tempfile.TemporaryDirectory() as tmp:
+            glob = _write(Path(tmp) / "profile", "{}")
+            fake = types.SimpleNamespace(get_hermes_home=lambda: str(Path(tmp) / "profile"))
+            with mock.patch.dict("sys.modules", {"hermes_constants": fake}), \
+                    mock.patch.object(Path, "home", return_value=Path(tmp) / "nowhere"):
+                self.assertEqual(find_config_path(), glob)
+
+    def test_unreadable_json_is_a_named_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            _write(home, "{not json")
+            with self.assertRaisesRegex(ValueError, "Unable to read SoL-Pi config"):
+                load_sol_pi_config(None, home)
+
+    def test_defaults_are_the_documented_literals(self) -> None:
+        want = SolPiConfig(
+            version=1,
+            evidence_preserving_reducer_model="gpt-5.6-luna",
+            evidence_preserving_reducer_provider="openai-codex",
+            cache_write_read_ratio=12.5,
+        )
+        self.assertEqual(SolPiConfig(), want)
+        self.assertEqual(load_sol_pi_config(raw={}), want)
+
+    def test_unreadable_file_is_a_named_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(Path(tmp), "{}")
+            with mock.patch.object(Path, "read_text", side_effect=PermissionError("denied")):
+                with self.assertRaisesRegex(ValueError, "Unable to read SoL-Pi config.*denied"):
+                    load_sol_pi_config(None, Path(tmp))
+
+
+class ConfigValidationTests(unittest.TestCase):
+    def test_non_object_rejected(self) -> None:
+        for raw in ([], "x", 3):
+            with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+                load_sol_pi_config(raw=raw)  # type: ignore[arg-type]
+
+    def test_version_must_be_one(self) -> None:
+        with self.assertRaisesRegex(ValueError, "version must be 1"):
+            load_sol_pi_config(raw={"version": 2})
+
+    def test_float_version_one_is_normalised_to_int(self) -> None:
+        self.assertIs(type(load_sol_pi_config(raw={"version": 1.0}).version), int)
+
+    def test_boolean_true_is_not_version_one(self) -> None:
+        # True == 1 in Python, but JSON `true` is not the integer version 1.
+        with self.assertRaisesRegex(ValueError, "version must be 1"):
+            load_sol_pi_config(raw={"version": True})
+
+    def test_each_feature_flag_is_read_and_must_be_boolean(self) -> None:
+        fields = {
+            "actionFusion": "action_fusion",
+            "observationPack": "observation_pack",
+            "evidencePreservingReducer": "evidence_preserving_reducer",
+            "onlineContextCompact": "online_context_compact",
+        }
+        for key, attr in fields.items():
+            cfg = load_sol_pi_config(raw={"version": 1, key: True})
+            self.assertEqual(
+                {a for a in fields.values() if getattr(cfg, a)}, {attr}, key
+            )
+            for bad in (1, "true", None):
+                with self.assertRaisesRegex(ValueError, f"{key} must be boolean"):
+                    load_sol_pi_config(raw={"version": 1, key: bad})
+
+    def test_reducer_strings_default_override_and_reject_blank(self) -> None:
+        cfg = load_sol_pi_config(raw={"version": 1})
+        self.assertEqual(cfg.evidence_preserving_reducer_model, DEFAULT_REDUCER_MODEL)
+        self.assertEqual(cfg.evidence_preserving_reducer_provider, DEFAULT_REDUCER_PROVIDER)
+        cfg = load_sol_pi_config(raw={
+            "version": 1,
+            "evidencePreservingReducerModel": "m",
+            "evidencePreservingReducerProvider": "p",
+        })
+        self.assertEqual((cfg.evidence_preserving_reducer_model, cfg.evidence_preserving_reducer_provider), ("m", "p"))
+        for key in ("evidencePreservingReducerModel", "evidencePreservingReducerProvider"):
+            for bad in ("", "  ", 5, None):
+                with self.assertRaisesRegex(ValueError, f"{key} must be a non-empty string"):
+                    load_sol_pi_config(raw={"version": 1, key: bad})
+
+    def test_every_mechanism_is_off_by_default(self) -> None:
+        off = dict(action_fusion=False, observation_pack=False, evidence_preserving_reducer=False, online_context_compact=False)
+        for cfg in (SolPiConfig(), load_sol_pi_config(raw={}), load_sol_pi_config(raw={"version": 1})):
+            self.assertEqual({k: getattr(cfg, k) for k in off}, off)
+
+    def test_cache_ratio_default_valid_and_invalid(self) -> None:
+        self.assertEqual(load_sol_pi_config(raw={"version": 1}).cache_write_read_ratio, DEFAULT_CACHE_WRITE_READ_RATIO)
+        for good, want in ((0, 0.0), (3, 3.0), (1.5, 1.5)):
+            cfg = load_sol_pi_config(raw={"version": 1, "cacheWriteReadRatio": good})
+            self.assertEqual(cfg.cache_write_read_ratio, want)
+            self.assertIsInstance(cfg.cache_write_read_ratio, float)
+        for bad in (-1, -0.5, True, False, "2", None, float("nan"), float("inf"), 10**400):
+            with self.assertRaisesRegex(ValueError, "cacheWriteReadRatio"):
+                load_sol_pi_config(raw={"version": 1, "cacheWriteReadRatio": bad})
+
+    def test_non_finite_ratio_in_a_real_file_is_rejected(self) -> None:
+        for literal in ("NaN", "Infinity", "1e999"):
+            with tempfile.TemporaryDirectory() as tmp:
+                _write(Path(tmp), '{"version": 1, "cacheWriteReadRatio": %s}' % literal)
+                with self.assertRaisesRegex(ValueError, "cacheWriteReadRatio"):
+                    load_sol_pi_config(None, Path(tmp))
+
+    def test_loaded_config_is_immutable(self) -> None:
+        cfg = load_sol_pi_config(raw={"version": 1})
+        with self.assertRaises(FrozenInstanceError):
+            cfg.action_fusion = True
+
+
+if __name__ == "__main__":
+    unittest.main()
