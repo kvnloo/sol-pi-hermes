@@ -64,8 +64,15 @@ def runtime_root_for_session(session_id: str, hermes_home: Path | None = None) -
     from .config import _hermes_home
 
     home = hermes_home or _hermes_home()
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_id) or "default"
-    return home / "sol-pi" / safe
+    # Display-only slugs collide ("tenant/a" and "tenant:a" both become
+    # "tenant_a"). Sharing a directory would also share archived observations,
+    # recall access, and the ledger across distinct sessions.
+    slug = "".join(
+        ch if ch.isascii() and (ch.isalnum() or ch in "-_") else "_"
+        for ch in session_id[:40]
+    ) or "default"
+    digest = hashlib.sha256(session_id.encode("utf-8", "surrogatepass")).hexdigest()
+    return home / "sol-pi" / f"{slug}-{digest}"
 
 
 def _message_text(message: Mapping[str, Any]) -> str:

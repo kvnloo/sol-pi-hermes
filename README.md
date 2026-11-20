@@ -31,13 +31,15 @@ SoL-Pi's Evidence-Preserving Reducer and Online Context Compact are ported in `e
 
 ## What it touches
 
-- **Writes**: archived tool results under `<hermes home>/sol-pi/<session>/observation-pack/` (directory mode 0700, new files 0600), plus a newly created 0600 `ledger.jsonl` next to them. Existing archives/ledgers are not permission-migrated; installations upgrading from older versions should inspect their permissions before enabling ObservationPack. Action Fusion additionally writes the requested target through Hermes write_file/patch in the originating task/session backend.
+- **Writes**: archived tool results under `<hermes home>/sol-pi/<session-slug>-<session-SHA256>/observation-pack/` (directory mode 0700, new files 0600), plus a newly created 0600 `ledger.jsonl` next to them. Existing archives/ledgers are not permission-migrated; installations upgrading from older versions should inspect their permissions before enabling ObservationPack. Action Fusion additionally writes the requested target through Hermes write_file/patch in the originating task/session backend.
 - **Reads**: `sol-pi.json` in the Hermes home, no host-side reads of Action Fusion target files. PluginContext does not attest backend locality, so the plugin does not hash a host path or promise an atomic edit/check transaction.
 - **Commands**: `then_run` runs the model's command through Hermes' `terminal` tool, with the originating task/session identity. Dangerous-command approval and the write denylist still apply, but nested dispatch currently bypasses ACP/Zed editor edit approval, file checkpoints (`/rollback`), and other plugins' `pre_tool_call` guards. Do not enable Action Fusion where those protections are required. Core PR NousResearch/hermes-agent#138933 addresses the hook portion, not all these protections.
 - **Network**: none.
 - **Credentials**: none.
 
 Action Fusion tools are registered only when `actionFusion` is enabled. Returned mutation failures skip the command; returned command failures are labeled failed. Command results without a completed integer exit code are labeled `then_run:unknown`, not success; no background polling is added. Restart/reload the plugin after changing configuration.
+
+Session directory names use a bounded ASCII slug followed by the SHA-256 of the **original** session ID, so sanitized names cannot accidentally mix different sessions. Old slug-only archives are not consulted after upgrade; full tool observations retained in the transcript are re-archived when a later provider request projects them.
 
 ## Provenance
 
@@ -50,3 +52,5 @@ The algorithms follow NVlabs/SoL-Pi @ `22277b7e` (MIT).
 ```bash
 PYTHONPATH=. python -m unittest discover -s tests
 ```
+
+ObservationPack requires a nonempty host-provided session ID (or task ID fallback). Without one, request projection returns the full unchanged observation without archiving it, and recall returns an identity error. An explicit session named `default` remains valid but is never an anonymous fallback. These identifiers must come from the trusted host callback, not tool arguments.
