@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +73,46 @@ class ObservationPackTests(unittest.TestCase):
             self.assertEqual(history[1]["content"], body)
             self.assertNotIn("[large tool result replaced", second[1]["content"])
 
+    def _excerpts(self, body: str) -> tuple[str, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            sent = {}
+            msgs = [_big_tool(body)]
+            for _ in range(FULL_SENDS + 1):
+                out = project_messages(msgs, Path(tmp), sent)
+        match = re.search(
+            r"\[first complete lines[^\n]*\n(.*)\n\[middle omitted[^\n]*\n(.*)\n\[\d+ original bytes omitted\]$",
+            out[0]["content"],
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        return match.group(1), match.group(2)
+
+    def test_placeholder_excerpt_budget_is_inclusive(self) -> None:
+        rows = [f"rw-{i:04d}\n" for i in range(1400)]  # 8 bytes each, >THRESHOLD_BYTES
+        head, tail = self._excerpts("".join(rows))
+        self.assertEqual(head, "".join(rows[:64]))  # exactly 512 bytes fits
+        self.assertEqual(tail, "".join(rows[-64:]))  # original order, not reversed
+
+    def test_placeholder_excerpt_stops_at_first_oversized_line(self) -> None:
+        wide = "\u00e9" * 200 + "\n"  # 200 chars, 401 bytes: two exceed 512 bytes
+        filler = "x" * 100 + "\n"
+        body = wide * 2 + "head-skip\n" + filler * 110 + "tail-skip\n" + wide * 2
+        head, tail = self._excerpts(body)
+        self.assertEqual(head, wide)
+        self.assertEqual(tail, wide)
+
+    def test_placeholder_excerpt_is_empty_when_edge_line_exceeds_budget(self) -> None:
+        huge = "z" * 600 + "\n"  # one line over the 512-byte half budget: never truncated mid-line
+        head, tail = self._excerpts(huge + "mid\n" * 4000 + huge)
+        self.assertEqual((head, tail), ("", ""))
+
+    def test_exactly_threshold_bytes_stays_inline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(create_observation(_big_tool("x" * THRESHOLD_BYTES), root))
+            over = create_observation(_big_tool("x" * (THRESHOLD_BYTES + 1)), root)
+            self.assertEqual(over.bytes, THRESHOLD_BYTES + 1)
+
     def test_reducer_receipt_is_not_packed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -125,10 +166,79 @@ class OccTests(unittest.TestCase):
         gate.on_plan_boundary()
         self.assertTrue(gate.on_agent_settled())
 
+    def test_default_gate_is_disabled(self) -> None:
+        gate = OnlineCompactGate()
+        self.assertFalse(gate.enabled)
+        self.assertEqual(gate.last_reason, "waiting_for_agent_settled")
+        gate.on_plan_boundary()
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "disabled")
+
     def test_disabled_never_compacts(self) -> None:
         gate = OnlineCompactGate(enabled=False)
         gate.on_plan_boundary()
         self.assertFalse(gate.on_agent_settled())
+
+    def test_settle_consumes_pending_boundary(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        gate.on_plan_boundary()
+        self.assertTrue(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "compact_via_builtin_compressor")
+        self.assertFalse(gate.should_compact())
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "no_pending_boundary")
+
+    def test_disabled_reason(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        gate.on_plan_boundary()
+        self.assertEqual(gate.last_reason, "disabled")
+        gate.last_reason = ""
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "disabled")
+        self.assertFalse(gate.should_compact())
+
+
+class OccSettledRecordedTests(unittest.TestCase):
+    def test_agent_settled_is_recorded_even_when_nothing_is_pending(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        self.assertFalse(gate.settled)
+        self.assertFalse(gate.on_agent_settled())
+        self.assertTrue(gate.settled)
+        gate.on_plan_boundary()
+        self.assertTrue(gate.should_compact())
+
+    def test_boundary_only_reports_waiting_until_first_settle(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        gate.last_reason = ""
+        gate.on_plan_boundary()
+        self.assertEqual(gate.last_reason, "waiting_for_agent_settled")
+        gate.on_agent_settled()
+        gate.on_plan_boundary()
+        self.assertNotEqual(gate.last_reason, "waiting_for_agent_settled")
+
+    def test_should_compact_requires_enabled(self) -> None:
+        gate = OnlineCompactGate(enabled=True)
+        gate.on_agent_settled()
+        gate.on_plan_boundary()
+        self.assertTrue(gate.should_compact())
+        gate.enabled = False
+        self.assertFalse(gate.should_compact())
+
+    def test_boundary_while_disabled_is_not_remembered(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        gate.on_plan_boundary()
+        gate.enabled = True
+        self.assertFalse(gate.on_agent_settled())
+        self.assertEqual(gate.last_reason, "no_pending_boundary")
+        self.assertFalse(gate.should_compact())
+
+    def test_settle_while_disabled_is_still_recorded(self) -> None:
+        gate = OnlineCompactGate(enabled=False)
+        self.assertFalse(gate.on_agent_settled())
+        self.assertTrue(gate.settled)
+        gate.enabled = True
+        gate.on_plan_boundary()
+        self.assertTrue(gate.should_compact())
 
 
 class EprTests(unittest.TestCase):
