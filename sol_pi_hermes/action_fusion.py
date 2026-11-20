@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,8 +16,8 @@ THEN_RUN_SKIPPED = "[then_run:skipped]"
 THEN_RUN_SCHEMA = {
     "type": "object",
     "properties": {
-        "command": {"type": "string", "description": "Shell command to run after the mutation succeeds"},
-        "timeout": {"type": "number", "description": "Timeout in seconds (optional)"},
+        "command": {"type": "string", "description": "Shell command without NUL characters to run after the mutation succeeds"},
+        "timeout": {"type": "number", "minimum": 0, "description": "Finite non-negative timeout in seconds (optional; 0 uses the host default)"},
     },
     "required": ["command"],
 }
@@ -94,6 +95,17 @@ def execute_mutation_then_run(
     then_run: dict[str, Any] | None,
     run_command: Callable[[str, float | None], str],
 ) -> str:
+    if then_run is not None:
+        valid = isinstance(then_run, dict) and isinstance(then_run.get("command"), str) and bool(then_run["command"].strip()) and "\0" not in then_run["command"]
+        if valid and then_run.get("timeout") is not None:
+            timeout = then_run["timeout"]
+            try:
+                valid = type(timeout) in (int, float) and timeout >= 0 and math.isfinite(timeout)
+            except OverflowError:
+                valid = False
+        if not valid:
+            return json.dumps({"error": "Invalid then_run: require a nonempty NUL-free string command and finite non-negative numeric timeout; no mutation was attempted.",
+                               "then_run": THEN_RUN_SKIPPED})
     try:
         mutation_result = mutate()
     except Exception as exc:
@@ -109,8 +121,20 @@ def execute_mutation_then_run(
         return mutation_result if isinstance(mutation_result, str) else json.dumps({"result": mutation_result})
 
     failure = _reported_failure(mutation_result)
-    if failure:
-        return json.dumps({"mutation": mutation_result, "then_run": THEN_RUN_SKIPPED, "error": failure})
+    try:
+        payload = json.loads(mutation_result)
+    except (TypeError, ValueError):
+        payload = None
+    # Hermes PatchResult reports success; WriteResult reports bytes_written.
+    # Absence of an error alone is not proof that a mutation completed.
+    confirmed = isinstance(payload, dict) and (
+        payload.get("success") is True
+        or ("success" not in payload and type(payload.get("bytes_written")) is int
+            and payload["bytes_written"] >= 0)
+    )
+    if failure or not confirmed:
+        return json.dumps({"mutation": mutation_result, "then_run": THEN_RUN_SKIPPED,
+                           "error": failure or "File mutation success was not confirmed; the command was not run."})
 
     try:
         # Only callers with a verified host-local target may enable this guard.

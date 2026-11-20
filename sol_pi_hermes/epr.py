@@ -42,10 +42,10 @@ def should_reduce(body: str, command: str) -> bool:
 
 
 def quote_verify(receipt_quotes: list[str], archive_body: str) -> bool:
-    """Every quoted line must appear byte-for-byte in the archive."""
+    """Every quote must be non-blank and appear byte-for-byte in the archive."""
     if not receipt_quotes:
         return False
-    return all(quote in archive_body for quote in receipt_quotes)
+    return all(quote.strip() and quote in archive_body for quote in receipt_quotes)
 
 
 def apply_receipt(command: str, archive_hash: str, quotes: list[str], notes: str) -> str:
@@ -83,11 +83,13 @@ def transform_if_reduced(
     if not isinstance(reduced, dict):
         return None
     quotes = reduced.get("quotes") or []
-    if not isinstance(quotes, list) or not quote_verify([str(q) for q in quotes], result):
+    if not isinstance(quotes, list) or not all(isinstance(q, str) for q in quotes):
+        return None
+    if not quote_verify(quotes, result):
         return None
     from .observation_pack import hash_text
 
-    receipt = apply_receipt(command, hash_text(result), [str(q) for q in quotes], str(reduced.get("notes") or ""))
+    receipt = apply_receipt(command, hash_text(result), quotes, str(reduced.get("notes") or ""))
     if len(receipt.encode("utf-8")) >= len(result.encode("utf-8")):
         return None
     return receipt

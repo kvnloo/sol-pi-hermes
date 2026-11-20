@@ -11,10 +11,20 @@ import hashlib
 import json
 import os
 import re
+import stat
+import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from .action_fusion import THEN_RUN_FAILED
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX hosts: omit optional ledger telemetry
+    fcntl = None
 
 THRESHOLD_BYTES = 10 * 1024
 FULL_SENDS = 2
@@ -64,8 +74,15 @@ def runtime_root_for_session(session_id: str, hermes_home: Path | None = None) -
     from .config import _hermes_home
 
     home = hermes_home or _hermes_home()
-    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_id) or "default"
-    return home / "sol-pi" / safe
+    # Display-only slugs collide ("tenant/a" and "tenant:a" both become
+    # "tenant_a"). Sharing a directory would also share archived observations,
+    # recall access, and the ledger across distinct sessions.
+    slug = "".join(
+        ch if ch.isascii() and (ch.isalnum() or ch in "-_") else "_"
+        for ch in session_id[:40]
+    ) or "default"
+    digest = hashlib.sha256(session_id.encode("utf-8", "surrogatepass")).hexdigest()
+    return home / "sol-pi" / f"{slug}-{digest}"
 
 
 def _message_text(message: Mapping[str, Any]) -> str:
@@ -94,8 +111,18 @@ def is_pure_text_tool_result(message: Mapping[str, Any]) -> bool:
         return False
     if isinstance(content, str):
         return True
+    # Archives retain text only. Metadata-bearing or malformed blocks cannot
+    # be reconstructed by recall, so preserve their entire tool result.
     if isinstance(content, list) and content and all(
-        (isinstance(b, str) or (isinstance(b, Mapping) and b.get("type") == "text"))
+        (
+            isinstance(b, str)
+            or (
+                isinstance(b, Mapping)
+                and set(b) == {"type", "text"}
+                and b.get("type") == "text"
+                and isinstance(b.get("text"), str)
+            )
+        )
         for b in content
     ):
         return True
@@ -138,6 +165,19 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     size = utf8_len(text)
     if size <= THRESHOLD_BYTES:
         return None
+    # Hermes tool errors are JSON envelopes in content, not necessarily
+    # message-level isError flags. Keep explicit failures visible in full.
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError, RecursionError):
+        payload = None
+    if isinstance(payload, dict) and (
+        payload.get("error")
+        or payload.get("success") is False
+        or payload.get("then_run") == THEN_RUN_FAILED
+        or (type(payload.get("exit_code")) is int and payload["exit_code"] != 0)
+    ):
+        return None
     if not str(runtime_root):
         raise ValueError("Persistent SoL-Pi runtime directory is unavailable")
     content_hash = hash_text(text)
@@ -157,26 +197,65 @@ def create_observation(message: Mapping[str, Any], runtime_root: Path) -> Observ
     )
 
 
+def _validate_stored(observation: Observation) -> None:
+    before = observation.file_path.lstat()
+    if not stat.S_ISREG(before.st_mode):
+        raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
+    # Refuse platforms without nonblocking open rather than risk hanging on a
+    # FIFO substituted between lstat and open. NOFOLLOW is additional defense;
+    # descriptor identity checks still reject symlink targets without that flag.
+    if not hasattr(os, "O_NONBLOCK"):
+        raise OSError("Safe nonblocking archive validation is unavailable")
+    fd = os.open(observation.file_path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise OSError(f"Content-addressed observation changed during validation for {observation.id}")
+        if opened.st_size != observation.bytes:
+            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            # Bound reads even if a concurrent writer grows the same inode.
+            existing = stream.read(observation.bytes + 1)
+    finally:
+        os.close(fd)
+    if len(existing) != observation.bytes:
+        raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
+    if hash_text(existing) != observation.content_hash:
+        raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+
+
 def ensure_stored(observation: Observation) -> None:
     directory = observation.file_path.parent
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     if directory.is_symlink() or not directory.is_dir():
         raise OSError(f"Observation directory is not a regular directory for {observation.id}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    # A previously published object needs verification, not another write.
+    # Keep the same validator for a concurrent publisher's EEXIST result.
+    if observation.file_path.exists():
+        _validate_stored(observation)
+        return
+    # Publish only complete objects. A short write or interrupted writer must
+    # never expose a truncated archive to projection or a concurrent reader.
+    fd, temporary_name = tempfile.mkstemp(prefix=".observation-", dir=directory)
+    temporary = Path(temporary_name)
     try:
-        fd = os.open(observation.file_path, flags, 0o600)
         try:
-            os.write(fd, observation.text.encode("utf-8"))
+            remaining = memoryview(observation.text.encode("utf-8"))
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("Observation write made no progress")
+                remaining = remaining[written:]
         finally:
             os.close(fd)
-    except FileExistsError:
-        existing = observation.file_path.read_bytes()
-        if not observation.file_path.is_file() or observation.file_path.is_symlink():
-            raise OSError(f"Content-addressed observation is not a regular file for {observation.id}")
-        if len(existing) != observation.bytes:
-            raise OSError(f"Content-addressed observation size mismatch for {observation.id}")
-        if hash_text(existing) != observation.content_hash:
-            raise OSError(f"Content-addressed observation hash mismatch for {observation.id}")
+        try:
+            # Same-directory hard linking is atomic and never replaces an
+            # existing object (including one published by a concurrent writer).
+            os.link(temporary, observation.file_path)
+        except FileExistsError:
+            _validate_stored(observation)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _complete_line_excerpt(text: str, budget_bytes: int, from_end: bool) -> str:
@@ -227,12 +306,47 @@ def append_ledger(runtime_root: Path, entry: Mapping[str, Any]) -> None:
     path = ledger_path(runtime_root)
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     payload = {"timestamp": datetime.now(timezone.utc).isoformat(), **dict(entry)}
-    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    record = (json.dumps(payload) + "\n").encode("utf-8")
+    if not hasattr(os, "O_NONBLOCK"):
+        # Optional telemetry must not risk a blocking special-file open.
+        return
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
     if path.is_symlink():
         raise OSError("Observation ledger must not be a symlink")
     fd = os.open(path, flags, 0o600)
-    with os.fdopen(fd, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload) + "\n")
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("Observation ledger must be a regular file")
+        if not _try_lock(fd):
+            # Telemetry is optional; unlocked short writes can corrupt other records.
+            return
+        # A writer that died mid-record leaves no trailing newline; never glue onto it.
+        size = os.fstat(fd).st_size
+        if size and os.lseek(fd, size - 1, os.SEEK_SET) >= 0 and os.read(fd, 1) != b"\n":
+            record = b"\n" + record
+        view = memoryview(record)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError("Observation ledger write made no progress")
+            view = view[written:]
+    finally:
+        os.close(fd)
+
+
+def _try_lock(fd: int) -> bool:
+    """Bound lock retries to ~100ms; skip optional telemetry if unavailable."""
+    if fcntl is None:
+        return False
+    for _ in range(50):
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            time.sleep(0.002)
+        except OSError:  # e.g. ENOLCK on NFS: do not risk corrupting the ledger
+            return False
+    return False
 
 
 def _clone_message(message: Mapping[str, Any]) -> dict[str, Any]:
@@ -273,6 +387,9 @@ def project_messages(
     prior = _prior_assistant_counts(source)
     request_index = (prior[0] + 1) if prior else 1
     projected = list(source)
+    # Duplicate appearances share one provider request, not separate sends.
+    # Retain the initial count even after earlier occurrences update counts.
+    request_previous_sends: dict[str, int] = {}
 
     for index, message in enumerate(source):
         if not is_pure_text_tool_result(message):
@@ -283,7 +400,9 @@ def project_messages(
                 continue
             ensure_stored(observation)
             send_key = f"{runtime_root}\0{observation.id}"
-            previous_sends = counts.get(send_key, prior[index])
+            previous_sends = request_previous_sends.setdefault(
+                send_key, counts.get(send_key, prior[index])
+            )
             if previous_sends < FULL_SENDS:
                 append_ledger(
                     runtime_root,
@@ -325,14 +444,25 @@ def read_recall_chunk(
     max_bytes: int,
     max_lines: int,
 ) -> dict[str, Any]:
-    if not path.is_file() or path.is_symlink():
+    expected = path.lstat()
+    if not stat.S_ISREG(expected.st_mode):
         raise FileNotFoundError(path)
-    size = path.stat().st_size
-    if offset > size:
-        raise ValueError(f"Offset {offset} exceeds observation size {size}")
-    with path.open("rb") as handle:
-        handle.seek(offset)
-        buffer = handle.read(max_bytes + 4)
+    # Keep validation and reading on one descriptor. NONBLOCK prevents an
+    # attacker-swapped FIFO from hanging before its type can be checked.
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(path, flags)
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+            raise OSError("Observation changed while opening")
+        size = opened.st_size
+        if offset > size:
+            raise ValueError(f"Offset {offset} exceeds observation size {size}")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            handle.seek(offset)
+            buffer = handle.read(max_bytes + 4)
+    finally:
+        os.close(fd)
     end = min(len(buffer), max_bytes)
     newline_count = 0
     for index in range(end):
@@ -346,6 +476,10 @@ def read_recall_chunk(
         end -= 1
     chunk = buffer[:end]
     next_offset = offset + len(chunk)
+    if next_offset == offset and next_offset < size:
+        # A truncated archive or unusably small UTF-8 budget must not return
+        # an apparently successful page that tells callers to repeat forever.
+        raise ValueError("Observation recall made no progress before EOF; archive or read budget may have changed")
     text = chunk.decode("utf-8")
     return {
         "text": text,
@@ -357,49 +491,55 @@ def read_recall_chunk(
 
 
 def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
-    if not is_observation_id(obs_id):
-        return json.dumps({"error": f"Unknown observation id: {obs_id}"})
+    if not isinstance(obs_id, str) or not is_observation_id(obs_id):
+        # Never reflect arbitrary caller content into an unbounded tool result.
+        return json.dumps({"error": "Invalid observation id: expected obs_ followed by 24 lowercase hexadecimal characters"})
     path = observation_path(runtime_root, obs_id)
     limits = {
         "max_bytes": RECALL_MAX_BYTES - RECALL_HEADER_RESERVE_BYTES,
         "max_lines": RECALL_MAX_LINES - RECALL_HEADER_LINES,
     }
-    try:
-        chunk = read_recall_chunk(path, offset, **limits)
-    except FileNotFoundError:
-        return json.dumps({"error": f"Unknown observation id: {obs_id}"})
-    except Exception as exc:
-        return json.dumps({"error": str(exc)})
-    header = (
-        f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
-        f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
-    )
-    content = f"{header}\n{chunk['text']}"
-    if utf8_len(content) > RECALL_MAX_BYTES or count_lines(content) > RECALL_MAX_LINES:
-        return json.dumps({"error": "Recall output exceeded its hard limit"})
-    append_ledger(
-        runtime_root,
-        {
-            "event": "recall",
-            "id": obs_id,
-            "offset": offset,
-            "bytes": chunk["bytes"],
-            "lines": chunk["lines"],
-            "nextOffset": chunk["nextOffset"],
-            "eof": chunk["eof"],
-        },
-    )
-    return json.dumps(
-        {
-            "id": obs_id,
-            "offset": offset,
-            "next_offset": chunk["nextOffset"],
-            "eof": chunk["eof"],
-            "bytes": chunk["bytes"],
-            "lines": chunk["lines"],
+    # Budget the actual returned JSON, including escaping and envelope fields,
+    # not just its decoded content. Shrinking preserves UTF-8 boundaries and
+    # uses the final chunk's byte offset so subsequent pages remain lossless.
+    while True:
+        try:
+            chunk = read_recall_chunk(path, offset, **limits)
+        except FileNotFoundError:
+            return json.dumps({"error": f"Unknown observation id: {obs_id}"})
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+        header = (
+            f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
+            f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
+        )
+        content = f"{header}\n{chunk['text']}"
+        response = json.dumps({
+            "id": obs_id, "offset": offset, "next_offset": chunk["nextOffset"],
+            "eof": chunk["eof"], "bytes": chunk["bytes"], "lines": chunk["lines"],
             "content": content,
-        }
-    )
+        })
+        if utf8_len(response) <= RECALL_MAX_BYTES and count_lines(content) <= RECALL_MAX_LINES:
+            break
+        if limits["max_bytes"] <= 4:
+            return json.dumps({"error": "Recall output exceeded its hard limit"})
+        limits["max_bytes"] = max(4, limits["max_bytes"] // 2)
+    try:  # The ledger is accounting only; never fail a successful recall on it.
+        append_ledger(
+            runtime_root,
+            {
+                "event": "recall",
+                "id": obs_id,
+                "offset": offset,
+                "bytes": chunk["bytes"],
+                "lines": chunk["lines"],
+                "nextOffset": chunk["nextOffset"],
+                "eof": chunk["eof"],
+            },
+        )
+    except OSError:
+        pass
+    return response
 
 
 def project_request(request: Mapping[str, Any], runtime_root: Path, sent_counts: dict[str, int]) -> dict[str, Any] | None:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import types as stdlib_types
 import unittest
 from pathlib import Path
@@ -50,6 +55,63 @@ class PackagingTests(unittest.TestCase):
                 if stripped.startswith("import ") or stripped.startswith("from "):
                     self.assertNotIn(".ts", stripped)
                     self.assertNotIn("sol-pi/index", stripped)
+
+    def test_entry_point_plugin_loads_and_registers_in_hermes(self) -> None:
+        # The declared module target must load in the real host (no plugin.yaml
+        # on this path) and register its middleware and tool.
+        host = importlib.util.find_spec("hermes_cli")
+        if host is None:
+            if os.environ.get("SOL_PI_REQUIRE_HERMES") == "1":
+                self.fail("hermes_cli is required by SOL_PI_REQUIRE_HERMES=1")
+            self.skipTest("hermes_cli not importable")
+        target = re.search(r'^sol-pi = "([^"]+)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M)[1]
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as site:
+            dist = Path(site, "sol_pi_hermes-0.0.dist-info")
+            dist.mkdir()
+            dist.joinpath("METADATA").write_text("Metadata-Version: 2.1\nName: sol-pi-hermes\nVersion: 0.0\n")
+            dist.joinpath("entry_points.txt").write_text(f"[hermes_agent.plugins]\nsol-pi = {target}\n")
+            Path(home, "config.yaml").write_text("plugins:\n  enabled: [sol-pi]\n")
+            run = subprocess.run(
+                [sys.executable, "-c",
+                 "from hermes_cli.plugins import get_plugin_manager as g;"
+                 "m = g(); m.discover_and_load(); p = m._plugins.get('sol-pi');"
+                 "print('LOADED', bool(p and p.enabled), p and p.error);"
+                 "print('MW', len(m._middleware.get('llm_request', [])));"
+                 "print('TOOLS', sorted(p.tools_registered or []))"],
+                capture_output=True, text=True, timeout=120, cwd=Path(host.origin).parents[1],
+                env={**os.environ, "HERMES_HOME": home, "PYTHONPATH": os.pathsep.join([site, str(ROOT)])})
+        out = run.stdout + run.stderr
+        self.assertEqual(run.returncode, 0, out)
+        self.assertIn("LOADED True None", out)
+        self.assertIn("MW 1", out)
+        self.assertIn("TOOLS ['obs_recall']", out)
+
+    def test_installed_wheel_exposes_hermes_plugin_entry_point(self) -> None:
+        if not all(importlib.util.find_spec(name) for name in ("pip", "setuptools", "wheel")):
+            self.skipTest("offline wheel build needs pip, setuptools and wheel")
+        with tempfile.TemporaryDirectory() as tmp:
+            src, target = Path(tmp, "src"), Path(tmp, "site")
+            shutil.copytree(ROOT, src, ignore=shutil.ignore_patterns(".git", "build", "*.egg-info", "__pycache__"))
+            install = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--no-deps", "--no-build-isolation",
+                 "--no-index", "--target", str(target), str(src)],
+                capture_output=True, text=True, timeout=300)
+            self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
+            found = subprocess.run(
+                [sys.executable, "-c",
+                 "import sys; sys.path.insert(0, sys.argv[1]);"
+                 "from importlib.metadata import distributions;"
+                 "eps = [e for d in distributions(path=[sys.argv[1]]) for e in d.entry_points"
+                 " if e.group == 'hermes_agent.plugins'];"
+                 "assert [(e.name, e.value) for e in eps] == [('sol-pi', 'sol_pi_hermes')], eps;"
+                 "import sol_pi_hermes; assert sol_pi_hermes.__file__.startswith(sys.argv[1]);"
+                 "loaded = eps[0].load();"
+                 "from sol_pi_hermes.plugin import register;"
+                 "assert loaded.register is register and callable(loaded.register); print('ok')", str(target)],
+                capture_output=True, text=True, timeout=60, cwd=tmp)
+        self.assertEqual(found.returncode, 0, found.stdout + found.stderr)
+        self.assertEqual(found.stdout.strip(), "ok", found.stderr)
+
 
 class EvaluatorPackagingTests(unittest.TestCase):
     def test_default_fixtures_belong_to_runtime_package(self):
