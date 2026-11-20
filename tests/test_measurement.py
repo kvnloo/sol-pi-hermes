@@ -185,6 +185,18 @@ class MeasurementTests(unittest.TestCase):
         self.assertIn('--requests must be positive', err.getvalue())
         self.assertEqual(out.getvalue(), '')
 
+    def test_recall_totals_sum_every_page_of_every_distinct_observation(self):
+        pages = []
+        real = observation_pack.recall
+        rows = fixtures()['large_ascii'] + fixtures()['large_unicode']
+        with mock.patch.object(observation_pack, 'recall',
+                               lambda *a: pages.append(real(*a)) or pages[-1]):
+            result = measure(rows, counter=len, counter_name='chars')
+        wires = [observation_pack.wire(json.loads(p)) for p in pages]
+        self.assertEqual(result['recalled_observations'], 2)
+        self.assertEqual(result['recall_response_units'], sum(len(w) for w in wires))
+        self.assertEqual(result['recall_response_bytes'], sum(len(w.encode()) for w in wires))
+
     def test_one_corrupted_observation_fails_roundtrip_even_if_a_later_one_is_clean(self):
         real = observation_pack.recall
         bad = []
