@@ -185,6 +185,13 @@ class MeasurementTests(unittest.TestCase):
         self.assertIn('--requests must be positive', err.getvalue())
         self.assertEqual(out.getvalue(), '')
 
+    def test_cli_default_is_four_requests(self):
+        out = io.StringIO()
+        with mock.patch.object(sys, 'argv', ['x']), contextlib.redirect_stdout(out):
+            main()
+        for report in json.loads(out.getvalue()).values():
+            self.assertEqual(len(report['requests']), 4)
+
     def test_recall_totals_sum_every_page_of_every_distinct_observation(self):
         pages = []
         real = observation_pack.recall
