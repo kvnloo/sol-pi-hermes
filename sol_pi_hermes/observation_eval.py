@@ -32,8 +32,19 @@ def _control_content(fixture: Mapping[str, Any]) -> str | list[Any]:
     control = fixture["control"]
     if not isinstance(control, dict):
         raise ValueError("control must be a JSON object")
-    if ("text_payload" in control) == ("content_blocks" in control):
-        raise ValueError("control needs exactly one of text_payload or content_blocks")
+    forms = ("text_payload", "raw_text_payload", "content_blocks")
+    if sum(key in control for key in forms) != 1:
+        raise ValueError("control needs exactly one of text_payload, raw_text_payload or content_blocks")
+    if "raw_text_payload" in control:
+        raw = control["raw_text_payload"]
+        if not isinstance(raw, str):
+            raise ValueError("raw_text_payload must be a UTF-8 JSON object string")
+        # Validate without reserializing: whitespace, escapes and number spelling
+        # are part of the recorded string control and its byte/token estimates.
+        raw.encode("utf-8")
+        if not isinstance(json.loads(raw), dict):
+            raise ValueError("raw_text_payload must be a UTF-8 JSON object string")
+        return raw
     if "text_payload" in control:
         if not isinstance(control["text_payload"], dict):
             raise ValueError("text_payload must be a JSON object")
@@ -65,11 +76,34 @@ def _bytes(content: str | list[Any]) -> int:
 
 
 def _indices(text: str) -> list[int]:
+    """Count structured Hermes element indices, or estimate from text fragments."""
+    try:
+        payload = json.loads(text)
+    except (ValueError, RecursionError):
+        payload = None
+    if isinstance(payload, dict) and isinstance(payload.get("elements"), list):
+        return sorted({
+            element["index"] for element in payload["elements"]
+            if isinstance(element, dict)
+            and type(element.get("index")) is int
+            and element["index"] >= 0
+        })
+    # Packed excerpts need not be complete JSON; retain the legacy heuristic
+    # when we cannot identify a complete Hermes elements array.
     return sorted({int(match) for match in _ELEMENT_INDEX.findall(text)})
 
 
 def _tokens(text: str, raw_tokens: set[str]) -> list[str]:
-    return sorted(token for token in raw_tokens if token in text)
+    return sorted(
+        token for token in raw_tokens
+        if (
+            # Count full identifiers even in prose; a shorter ID embedded in
+            # another word is not evidence that the shorter ID was visible.
+            re.search(r"(?<!\w)" + re.escape(token) + r"(?!\w)", text)
+            if re.fullmatch(r"[A-Za-z0-9_]+(?::[A-Za-z0-9_]+)*", token)
+            else token in text
+        )
+    )
 
 
 def _missing_fields(original: str, candidate: str) -> list[str]:
