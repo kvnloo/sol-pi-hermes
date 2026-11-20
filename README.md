@@ -128,3 +128,18 @@ argument, so discovering it after a successful write/patch would create an
 avoidable partial action. Literal backslash-zero, Unicode and newlines remain
 unchanged. This is argument validation, not shell-command safety analysis or a
 promise that valid commands will succeed or that failed checks roll back edits.
+### Recall response budget
+
+Successful `obs_recall` responses fit the 16 KiB limit as serialized UTF-8 JSON,
+including its envelope and escaped content. Unicode, control characters, quotes
+and backslashes can require smaller pages than plain text. The returned `bytes`
+and `next_offset` still count original UTF-8 content bytes, not JSON escaping;
+continue with `next_offset` until `eof` to recover the complete observation.
+The page selection conservatively halves the content budget when needed rather
+than maximizing each page. This does not claim a model-token or billing limit.
+
+Malformed recall IDs return a fixed, bounded format error rather than echoing
+arbitrarily large caller input into the tool response. Non-string IDs are also
+refused before path construction; valid but unknown IDs retain their short
+identifier in the diagnostic. This bounds this admission-error path, not all
+possible host-generated errors or the size of incoming tool arguments.

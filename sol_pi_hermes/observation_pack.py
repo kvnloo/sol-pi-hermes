@@ -446,26 +446,39 @@ def read_recall_chunk(
 
 
 def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
-    if not is_observation_id(obs_id):
-        return json.dumps({"error": f"Unknown observation id: {obs_id}"})
+    if not isinstance(obs_id, str) or not is_observation_id(obs_id):
+        # Never reflect arbitrary caller content into an unbounded tool result.
+        return json.dumps({"error": "Invalid observation id: expected obs_ followed by 24 lowercase hexadecimal characters"})
     path = observation_path(runtime_root, obs_id)
     limits = {
         "max_bytes": RECALL_MAX_BYTES - RECALL_HEADER_RESERVE_BYTES,
         "max_lines": RECALL_MAX_LINES - RECALL_HEADER_LINES,
     }
-    try:
-        chunk = read_recall_chunk(path, offset, **limits)
-    except FileNotFoundError:
-        return json.dumps({"error": f"Unknown observation id: {obs_id}"})
-    except Exception as exc:
-        return json.dumps({"error": str(exc)})
-    header = (
-        f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
-        f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
-    )
-    content = f"{header}\n{chunk['text']}"
-    if utf8_len(content) > RECALL_MAX_BYTES or count_lines(content) > RECALL_MAX_LINES:
-        return json.dumps({"error": "Recall output exceeded its hard limit"})
+    # Budget the actual returned JSON, including escaping and envelope fields,
+    # not just its decoded content. Shrinking preserves UTF-8 boundaries and
+    # uses the final chunk's byte offset so subsequent pages remain lossless.
+    while True:
+        try:
+            chunk = read_recall_chunk(path, offset, **limits)
+        except FileNotFoundError:
+            return json.dumps({"error": f"Unknown observation id: {obs_id}"})
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+        header = (
+            f"[obs_recall id={obs_id} offset={offset} next_offset={chunk['nextOffset']} eof={chunk['eof']}]\n"
+            f"[chunk_bytes={chunk['bytes']} chunk_lines={chunk['lines']}; use next_offset to continue]"
+        )
+        content = f"{header}\n{chunk['text']}"
+        response = json.dumps({
+            "id": obs_id, "offset": offset, "next_offset": chunk["nextOffset"],
+            "eof": chunk["eof"], "bytes": chunk["bytes"], "lines": chunk["lines"],
+            "content": content,
+        })
+        if utf8_len(response) <= RECALL_MAX_BYTES and count_lines(content) <= RECALL_MAX_LINES:
+            break
+        if limits["max_bytes"] <= 4:
+            return json.dumps({"error": "Recall output exceeded its hard limit"})
+        limits["max_bytes"] = max(4, limits["max_bytes"] // 2)
     try:  # The ledger is accounting only; never fail a successful recall on it.
         append_ledger(
             runtime_root,
@@ -481,17 +494,7 @@ def recall(runtime_root: Path, obs_id: str, offset: int = 0) -> str:
         )
     except OSError:
         pass
-    return json.dumps(
-        {
-            "id": obs_id,
-            "offset": offset,
-            "next_offset": chunk["nextOffset"],
-            "eof": chunk["eof"],
-            "bytes": chunk["bytes"],
-            "lines": chunk["lines"],
-            "content": content,
-        }
-    )
+    return response
 
 
 def project_request(request: Mapping[str, Any], runtime_root: Path, sent_counts: dict[str, int]) -> dict[str, Any] | None:
