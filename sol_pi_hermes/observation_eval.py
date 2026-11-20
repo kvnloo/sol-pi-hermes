@@ -94,7 +94,16 @@ def _indices(text: str) -> list[int]:
 
 
 def _tokens(text: str, raw_tokens: set[str]) -> list[str]:
-    return sorted(token for token in raw_tokens if token in text)
+    return sorted(
+        token for token in raw_tokens
+        if (
+            # Count full identifiers even in prose; a shorter ID embedded in
+            # another word is not evidence that the shorter ID was visible.
+            re.search(r"(?<!\w)" + re.escape(token) + r"(?!\w)", text)
+            if re.fullmatch(r"[A-Za-z0-9_]+(?::[A-Za-z0-9_]+)*", token)
+            else token in text
+        )
+    )
 
 
 def _missing_fields(original: str, candidate: str) -> list[str]:
