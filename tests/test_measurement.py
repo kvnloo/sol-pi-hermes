@@ -3,7 +3,9 @@ import copy
 import io
 import json
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from benchmarks import observation_pack
@@ -247,3 +249,17 @@ class MeasurementTests(unittest.TestCase):
                 packed = name in ('large_ascii', 'large_unicode')
                 self.assertEqual(result['saved_units_before_recall'] > 0, packed)
                 self.assertEqual(result['recalled_observations'], int(packed))
+
+    def test_archive_root_is_temporary_and_removed_after_measure(self):
+        real, seen = observation_pack.project_request, {}
+        def spy(source, root, sent):
+            result = real(source, root, sent)
+            seen['root'] = root
+            seen['files'] = seen.get('files', 0) + sum(1 for p in root.rglob('*') if p.is_file())
+            return result
+        with mock.patch.object(observation_pack, 'project_request', spy):
+            measure(fixtures()['large_ascii'])
+        root = seen['root']
+        self.assertGreater(seen['files'], 0)
+        self.assertTrue(root.resolve().is_relative_to(Path(tempfile.gettempdir()).resolve()))
+        self.assertFalse(root.exists())
