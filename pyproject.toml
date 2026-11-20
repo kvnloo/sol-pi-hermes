@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sol-pi-hermes"
-version = "0.2.0"
+version = "0.3.0"
 description = "Standalone Hermes Python plugin port of NVlabs/SoL-Pi"
 readme = "README.md"
 license = { text = "MIT" }

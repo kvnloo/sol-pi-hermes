@@ -1,5 +1,5 @@
 name: sol-pi
-version: 0.2.0
+version: 0.3.0
 description: SoL-Pi mechanisms for Hermes — ObservationPack request-time projection with obs_recall, plus Action Fusion write/patch-then-run tools
 manifest_version: 2
 api_version: 1
