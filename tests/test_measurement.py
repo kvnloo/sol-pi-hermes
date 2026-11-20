@@ -73,6 +73,8 @@ class MeasurementTests(unittest.TestCase):
                     self.assertEqual(result[key], sum(row[key] for row in result['requests']), key)
                 self.assertLess(result['projected_bytes'], result['control_bytes'])
                 self.assertLess(result['projected_units'], result['control_units'])
+                self.assertEqual(result['saved_bytes_before_recall'],
+                                 result['control_bytes'] - result['projected_bytes'])
 
     def test_wire_serialization_is_pinned(self):
         self.assertEqual(observation_pack.wire({'b': '測', 'a': [1, None]}), '{"a":[1,null],"b":"測"}')
