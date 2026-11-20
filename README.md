@@ -143,3 +143,15 @@ arbitrarily large caller input into the tool response. Non-string IDs are also
 refused before path construction; valid but unknown IDs retain their short
 identifier in the diagnostic. This bounds this admission-error path, not all
 possible host-generated errors or the size of incoming tool arguments.
+### Failed tool observations
+
+ObservationPack preserves explicit failed JSON tool-result envelopes in full,
+including a nonempty top-level `error`, `success: false`, or a nonzero integer
+`exit_code`. The explicit top-level ActionFusion `then_run: "[then_run:failed]"`
+status is also preserved, because its command diagnostics live inside `output`.
+Successful or unknown fused-command statuses remain eligible for packing. Hermes
+may put these fields inside content without a message-level
+`isError` flag. These results are not archived, counted or replaced by a
+placeholder. Successful/unstructured output remains eligible; nested data fields
+are not interpreted as failure signals. Wrapped or non-JSON error prose is not
+heuristically classified. This deliberately trades savings for visible diagnostics.
