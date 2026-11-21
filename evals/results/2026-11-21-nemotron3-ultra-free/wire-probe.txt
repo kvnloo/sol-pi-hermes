@@ -1,0 +1,22 @@
+== plain: input_tokens=100852 api_calls=7 err=
+   request 1: body 16732 B, tool-result chars 0, tools 6
+   request 2: body 63776 B, tool-result chars 46224, tools 6
+   request 3: body 64044 B, tool-result chars 46274, tools 6
+   request 4: body 64312 B, tool-result chars 46324, tools 6
+   request 5: body 64580 B, tool-result chars 46374, tools 6
+   request 6: body 64848 B, tool-result chars 46424, tools 6
+   request 7: body 65116 B, tool-result chars 46474, tools 6
+== sol-pi: input_tokens=57853 api_calls=7 err=
+   request 1: body 18680 B, tool-result chars 0, tools 9
+   request 2: body 65724 B, tool-result chars 46224, tools 9
+   request 3: body 65992 B, tool-result chars 46274, tools 9
+   request 4: body 19854 B, tool-result chars 516, tools 9
+   request 5: body 20122 B, tool-result chars 566, tools 9
+   request 6: body 20390 B, tool-result chars 616, tools 9
+   request 7: body 20658 B, tool-result chars 666, tools 9
+   ledger: full request 2 bytes 46224
+   ledger: full request 3 bytes 46224
+   ledger: placeholder request 4 bytes 46224
+   ledger: placeholder request 5 bytes 46224
+   ledger: placeholder request 6 bytes 46224
+   ledger: placeholder request 7 bytes 46224
