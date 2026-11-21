@@ -21,6 +21,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shutil
 import signal
 import statistics
@@ -151,6 +152,8 @@ def plugin_log_stats(home: Path) -> dict:
             name = str(e.get("event"))
             events[name] = events.get(name, 0) + 1
             if name == "subcall":
+                status = str(e.get("status"))
+                events["subcall:" + status] = events.get("subcall:" + status, 0) + 1
                 if isinstance(e.get("prompt_tokens"), int) and isinstance(e.get("completion_tokens"), int):
                     sub_in += e["prompt_tokens"]
                     sub_out += e["completion_tokens"]
@@ -161,6 +164,8 @@ def plugin_log_stats(home: Path) -> dict:
 
 
 def run(args) -> int:
+    if not args.allow_paid and not all(m.endswith(":free") for m in (args.model, args.sub_model)):
+        sys.exit("refusing a non-:free model without --allow-paid")
     sys.path.insert(0, str(REPO))
     tasks_mod = importlib.import_module(args.tasks)
     tasks, arms = tasks_mod.TASKS, tasks_mod.ARMS
@@ -170,8 +175,9 @@ def run(args) -> int:
     out.mkdir(parents=True, exist_ok=True)
     rows_path = out / "rows.jsonl"
     done = set()
-    if rows_path.exists():
-        done = {json.loads(l)["key"] for l in rows_path.read_text().splitlines() if l.strip()}
+    if rows_path.exists():  # rows that ended on a provider error are retried on resume
+        done = {r["key"] for r in map(json.loads, filter(str.strip, rows_path.read_text().splitlines()))
+                if not r.get("infra_error")}
     plugin_files = [p for p in REPO.rglob("*") if p.is_file() and (p.suffix in {".py", ".yaml"})
                     and not any(part in {".git", "tests", "evals", "bench", "__pycache__"} for part in p.relative_to(REPO).parts)]
     protocol = {"harness_sha": sha256_files([Path(__file__)]),
@@ -205,7 +211,7 @@ def run(args) -> int:
                 (work / run_id / "spec.json").write_text(json.dumps(spec))
                 env = {"PATH": os.environ["PATH"], "HOME": str(home), "HERMES_HOME": str(home),
                        "PYTHONPATH": str(Path(args.hermes_source).resolve()), "LANG": "C.UTF-8",
-                       args.key_env: os.environ.get(args.key_env, "anonymous"),
+                       args.key_env: os.environ[args.key_env],
                        "HERMES_DISABLE_TELEMETRY": "1", "TERM": "dumb"}
                 cmd = [args.hermes_python, "-B", str(Path(__file__).resolve()), "child", str(work / run_id / "spec.json")]
                 code, stdout, stderr, timed_out, wall = run_child(cmd, wd, env, args.timeout)
@@ -222,6 +228,8 @@ def run(args) -> int:
                                                          "tool_calls", "tools_exposed", "error",
                                                          "turn_exit_reason", "completed")},
                        "answer": (summary.get("answer") or "")[:2000]}
+                row["infra_error"] = timed_out or bool(re.search(r"HTTP (429|5\d\d)|rate.?limit|no summary",
+                                                                 str(row["error"]), re.I))
                 with rows_path.open("a") as f:
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 print(f"{run_id}: pass={row['pass']} in_tok={row['input_tokens']} calls={row['api_calls']} "
@@ -233,11 +241,15 @@ def run(args) -> int:
 
 def report(args) -> int:
     out = Path(args.out)
-    rows = [json.loads(l) for l in (out / "rows.jsonl").read_text().splitlines() if l.strip()]
+    latest = {}  # a retried row supersedes the provider-error row it replaced
+    for line in filter(str.strip, (out / "rows.jsonl").read_text().splitlines()):
+        r = json.loads(line)
+        latest[r["key"]] = r
+    rows = list(latest.values())
     protocol = json.loads((out / "protocol.json").read_text())
     arms = list(dict.fromkeys(r["arm"] for r in rows))
     tasks = list(dict.fromkeys(r["task"] for r in rows))
-    infra = lambda r: r["timed_out"] or (r["api_calls"] in (None, 0))  # no model answer at all
+    infra = lambda r: r.get("infra_error") or r["timed_out"] or (r["api_calls"] in (None, 0))
     tot = lambda r: None if r["input_tokens"] is None else r["input_tokens"] + r.get("sub_input_tokens", 0)
 
     def agg(rs):
@@ -306,8 +318,9 @@ def main(argv=None) -> int:
     r.add_argument("--work", required=True, help="scratch dir for per-row homes and working dirs")
     r.add_argument("--hermes-source", required=True)
     r.add_argument("--hermes-python", required=True)
-    r.add_argument("--base-url", default="https://api.kilo.ai/api/gateway")
-    r.add_argument("--provider", default="kilo")
+    r.add_argument("--base-url", default="https://openrouter.ai/api/v1")
+    r.add_argument("--provider", default="ab-lane", help="name of the generated custom provider entry")
+    r.add_argument("--allow-paid", action="store_true", help="permit models without a :free suffix")
     r.add_argument("--key-env", default="AB_PROVIDER_KEY")
     r.add_argument("--model", default="nvidia/nemotron-3-ultra-550b-a55b:free")
     r.add_argument("--sub-model", default="nvidia/nemotron-3.5-lightning:free")
