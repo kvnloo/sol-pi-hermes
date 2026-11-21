@@ -5,6 +5,10 @@ A standalone Hermes plugin that ports two mechanisms from [NVlabs/SoL-Pi](https:
 - **ObservationPack.** A tool result over 10 KiB is sent to the model in full twice. On later provider requests it is replaced by a short placeholder: an id plus a 1 KiB excerpt. The model reads it back with `obs_recall` (up to 16 KiB or 400 lines per call, continuing from `next_offset`). Only the outgoing request is changed. Stored history keeps the full result.
 - **Action Fusion.** `sol_pi_write` and `sol_pi_patch` run Hermes' own `write_file` / `patch` and, when the call carries `then_run`, run one follow-up command through Hermes' `terminal` tool. The edit and the check then cost one model turn instead of two.
 
+## Measured against plain Hermes
+
+Over 30 runs of 5 tool-heavy tasks on Nemotron 3 Ultra, ObservationPack cut prompt tokens sent by 14.6% (32.7% without one task where the model chose to read a 205 KB log), with no change in accuracy. It also cut prompt-cache hits from 70% to 49%, so uncached input rose 46%. On a provider with deep cache discounts, it currently costs more than it saves. See [`evals/results/`](evals/results/2026-11-21-nemotron3-ultra-free/README.md), the frozen harness in [`evals/`](evals/README.md), and #41.
+
 ## Install
 
 ```bash
